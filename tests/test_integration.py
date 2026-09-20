@@ -4,6 +4,7 @@ import pytest
 from credit.config import settings
 
 
+@pytest.mark.integrations
 def test_prediction_is_logged(client, valid_payload):
     if not client.app.state.db_enabled:
         pytest.skip("DATABASE_URL is not set or postgres is down")

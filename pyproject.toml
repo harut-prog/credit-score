@@ -35,6 +35,9 @@ module-name = "credit"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "integrations: tests that require external integrations, such as PostgreSQL",
+]
 
 [tool.ruff]
 line-length = 120
