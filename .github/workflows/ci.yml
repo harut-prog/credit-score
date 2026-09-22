@@ -27,8 +27,8 @@ jobs:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: credit_test
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
         with: {enable-cache: true}
       - run: uv sync --frozen
       - run: uv run ruff check .
@@ -42,7 +42,8 @@ jobs:
     permissions: {contents: read, packages: write}
 
     steps:
-      - uses: actions/checkout@v7
+      - run: echo "IMAGE=ghcr.io/${{ github.repository_owner }}/credit-service:sha-${{ github.sha }}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7.0.1
       - uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
@@ -53,6 +54,88 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/credit-service:sha-${{ github.sha }}
+          tags: ${{ env.IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+
+    permissions: {contents: read, packages: read}
+    
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: echo "IMAGE=ghcr.io/${{ github.repository_owner }}/credit-service:sha-${{ github.sha }}" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: helm/kind-action@v1.15.0
+        with:
+          cluster_name: ci
+
+      - name: Load image into kind
+        run: |
+          docker pull "$IMAGE"
+          kind load docker-image "$IMAGE" --name ci
+
+      - name: Create database secrets
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          test -n "$DB_PASSWORD" 
+          kubectl create secret generic credit-secrets \
+          --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy PostgreSQL
+        run: |
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/postgres.yaml
+          kubectl rollout status deploy/postgres --timeout=180s
+
+      - name: Deploy API
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl set image deploy/credit-score api="$IMAGE"
+          kubectl rollout status deploy/credit-score --timeout=180s
+
+      - name: Smoke test
+        run: |
+          kubectl port-forward svc/credit-score 8000:80 > /tmp/port-forward.log 2>&1 & port_forward_pid=$!
+          trap 'kill "$port_forward_pid"' EXIT
+
+          for attempt in {1..20}; do
+            if curl --fail --silent http://localhost:8000/health > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl --fail --silent --show-error http://localhost:8000/health
+
+          curl --fail --silent --show-error \
+          -X POST http://localhost:8000/v1/predict \
+          -H "Content-Type: application/json" \
+          --data '{"unsecured_lines":0.3,"age":35,"past_30_59":0,"past_90":0,"past_60_89":0,"debt_ratio":0.5,"monthly_income":5000,"credit_lines":5,"real_estate":1,"dependents":2}' \
+          | python -c 'import json,sys; r=json.load(sys.stdin); assert 0 <= r["score"] <= 1'
+
+          logged_count=$(kubectl exec deploy/postgres -- psql -U postgres -d credit -tc "SELECT count(*) FROM predictions")
+
+          test "$logged_count" = "1"
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get pods -o wide || true
+          kubectl get events --sort-by=.lastTimestamp || true
+          kubectl describe pods -l app=credit || true
+          kubectl describe pods -l app=postgres || true
+          kubectl logs deployment/credit-score --tail=50 || true
+          kubectl logs deployment/credit-score --previous --tail=50 || true
+          kubectl logs deployment/postgres --tail=50 || true

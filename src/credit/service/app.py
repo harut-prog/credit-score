@@ -36,7 +36,11 @@ app = FastAPI(title="Probability of a serious delay", version="1.1", lifespan=li
 
 @app.get('/health')
 def health():
-    return {"state": "ok", "model_version": getattr(app.state, "model_version", "unknown")}
+    return {
+        "state": "ok", 
+        "model_version": getattr(app.state, "model_version", "unknown"),
+        "log_level": settings.LOG_LEVEL,
+    }
 
 
 @app.get('/ready')
