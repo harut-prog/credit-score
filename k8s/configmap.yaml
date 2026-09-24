@@ -4,7 +4,7 @@ metadata:
   name: credit-config
 data:
   LOG_LEVEL: "INFO"
-  MODEL_PATH: artifacts/no_baseline_be_sure.joblib
+  MODEL_PATH: artifacts/baseline_logreg.joblib
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"
   POSTGRES_USER: postgres
