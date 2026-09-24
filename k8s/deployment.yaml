@@ -15,8 +15,14 @@ spec:
       containers:
         - name: api
           image: credit-score:1.0
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: credit-config
+            - secretRef:
+                name: credit-secrets
           startupProbe:
             httpGet:
               path: /health
@@ -30,7 +36,7 @@ spec:
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 8000
             periodSeconds: 5
           resources:

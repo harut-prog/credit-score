@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 
 import joblib
 import pandas as pd
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from credit import db
@@ -36,12 +38,30 @@ app = FastAPI(title="Probability of a serious delay", version="1.1", lifespan=li
 
 @app.get('/health')
 def health():
-    return {"state": "ok", "model_version": getattr(app.state, "model_version", "unknown")}
+    return {
+        "state": "ok", 
+        "model_version": getattr(app.state, "model_version", "unknown"),
+        "log_level": settings.LOG_LEVEL,
+    }
 
 
 @app.get('/ready')
 def ready():
     return {"state": "ready"}
+
+
+@app.exception_handler(RequestValidationError)
+def valid_exception_handler(request: Request, exc: RequestValidationError):
+    if request.url.path != '/v1/predict':
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+
+    request_id = str(uuid.uuid4())
+
+    if app.state.db_enabled:
+        payload = exc.body
+        db.save_prediction(request_id, payload, None, app.state.model_version, 0, 422)
+
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors()), "request_id": request_id})
 
 
 @app.post('/v1/predict', response_model=Prediction)
