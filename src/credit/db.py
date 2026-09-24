@@ -9,7 +9,7 @@ QUERY = """
         ts timestamptz NOT NULL DEFAULT now(),
         model_version text NOT NULL,
         features jsonb NOT NULL,
-        score numeric(5,3) NOT NULL,
+        score numeric(5,3),
         latency_ms integer,
         status_code integer
     )
@@ -20,13 +20,14 @@ def init() -> None:
         return None  # noqa: RET501
 
     with psycopg.connect(settings.database_url) as conn:
+        conn.execute("SELECT pg_advisory_xact_lock(12345)").fetchone()
         conn.execute(QUERY)
 
 
 def save_prediction(
     request_id: str, 
     features: dict, 
-    score: float, 
+    score: float | None,
     model_version: str, 
     latency_ms: float,
     status_code: int
