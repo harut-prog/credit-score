@@ -2,7 +2,7 @@ def test_predict_returns_valid_response(client, valid_payload):
     response = client.post("/v1/predict", json=valid_payload)
     body = response.json()
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert 0.0 <= body["score"] <= 1.0
     assert isinstance(body["arrear"], bool)
     assert body["latency_ms"] > 0
