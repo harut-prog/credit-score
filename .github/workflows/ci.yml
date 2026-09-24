@@ -125,7 +125,7 @@ jobs:
           --data '{"unsecured_lines":0.3,"age":35,"past_30_59":0,"past_90":0,"past_60_89":0,"debt_ratio":0.5,"monthly_income":5000,"credit_lines":5,"real_estate":1,"dependents":2}' \
           | python -c 'import json,sys; r=json.load(sys.stdin); assert 0 <= r["score"] <= 1'
 
-          logged_count=$(kubectl exec deploy/postgres -- psql -U postgres -d credit -tc "SELECT count(*) FROM predictions")
+          logged_count=$(kubectl exec deploy/postgres -- psql -U postgres -d credit -tAc "SELECT count(*) FROM predictions")
 
           test "$logged_count" = "1"
 
