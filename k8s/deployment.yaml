@@ -22,7 +22,7 @@ spec:
             - configMapRef:
                 name: credit-config
             - secretRef:
-                name: credit-secrets
+                name: credit-secret
           startupProbe:
             httpGet:
               path: /health
