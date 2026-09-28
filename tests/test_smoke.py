@@ -22,6 +22,13 @@ def test_ready_endpoint(client):
     assert response.json()["state"] == "ready"
 
 
+def test_ready_requires_model(client, monkeypatch):
+    monkeypatch.setattr(client.app.state, "pipeline", None)
+    response = client.get("/ready")
+    assert response.status_code == 503
+    assert response.json()["state"] == "not_ready"
+
+
 def test_same_input_gives_same_score(client, valid_payload):
     r1 = client.post("/v1/predict", json=valid_payload).json()
     r2 = client.post("/v1/predict", json=valid_payload).json()

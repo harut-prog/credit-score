@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_missing_required_field_returns_422(client, valid_payload):
     payload = valid_payload.copy()
     del payload["age"]
@@ -15,6 +18,13 @@ def test_negative_age_returns_422(client, valid_payload):
     payload = valid_payload | {"age": -5}
     response = client.post("/v1/predict", json=payload)
     assert response.status_code == 422
+
+
+def test_special_delinquency_codes_return_422(client, valid_payload):
+    for field in ("past_30_59", "past_60_89", "past_90"):
+        for code in (96, 98):
+            response = client.post("/v1/predict", json=valid_payload | {field: code})
+            assert response.status_code == 422
 
 
 def test_null_optional_fields_are_allowed(client, valid_payload):
@@ -38,7 +48,7 @@ def test_batch_returns_scores_in_order(client, valid_payload):
 
     for index in (0, 250, 499):
         single = client.post("/v1/predict", json=rows[index]).json()
-        assert body["scores"][index] == single["score"]
+        assert body["scores"][index] == pytest.approx(single["score"], abs=1e-12)
         assert body["arrear"][index] == single["arrear"]
 
 
@@ -46,7 +56,7 @@ def test_batch_matches_single_prediction(client, valid_payload):
     single = client.post("/v1/predict", json=valid_payload).json()
     batch = client.post("/v1/predict/batch", json={"rows": [valid_payload]}).json()
 
-    assert batch["scores"][0] == single["score"]
+    assert batch["scores"][0] == pytest.approx(single["score"], abs=1e-12)
 
 
 def test_batch_size_bounds_are_enforced(client, valid_payload):

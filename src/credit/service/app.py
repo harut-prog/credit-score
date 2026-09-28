@@ -47,7 +47,33 @@ def health():
 
 @app.get('/ready')
 def ready():
+    pipeline = getattr(app.state, "pipeline", None)
+    metadata = getattr(app.state, "metadata", None)
+    model_ready = pipeline is not None and callable(getattr(pipeline, "predict_proba", None))
+    metadata_ready = (
+        isinstance(metadata, dict)
+        and bool(metadata.get("features"))
+        and isinstance(metadata.get("threshold_lr"), (int, float))
+    )
+    if not model_ready or not metadata_ready:
+        return JSONResponse(status_code=503, content={"state": "not_ready"})
     return {"state": "ready"}
+
+
+def save_with_logging(*args):
+    try:
+        db.save_prediction(*args)
+    except Exception:
+        logger.exception("failed to save prediction %s", args[0])
+        raise
+
+
+def save_batch_with_logging(*args):
+    try:
+        db.save_predictions(*args)
+    except Exception:
+        logger.exception("failed to save batch starting with %s", args[0][0])
+        raise
 
 
 @app.exception_handler(RequestValidationError)
@@ -59,7 +85,7 @@ def valid_exception_handler(request: Request, exc: RequestValidationError):
 
     if app.state.db_enabled:
         payload = exc.body
-        db.save_prediction(request_id, payload, None, app.state.model_version, 0, 422)
+        save_with_logging(request_id, payload, None, app.state.model_version, 0, 422)
 
     return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors()), "request_id": request_id})
 
@@ -70,7 +96,6 @@ def predict(X: Features, bg: BackgroundTasks):
     request_id = str(uuid.uuid4())
 
     payload = X.model_dump()
-    payload["monthly_income_missing"] = int(payload["monthly_income"] is None)
 
     status_code, score = 200, None
     try:
@@ -84,7 +109,7 @@ def predict(X: Features, bg: BackgroundTasks):
     model_version = app.state.model_version
 
     if app.state.db_enabled:
-        bg.add_task(db.save_prediction, request_id, payload, score, model_version, latency_ms, status_code)
+        bg.add_task(save_with_logging, request_id, payload, score, model_version, latency_ms, status_code)
 
     if status_code == 500:
         return JSONResponse(status_code=500, content={"detail": "inference failed", "request_id": request_id})
@@ -107,8 +132,6 @@ def predict_batch(X: BatchFeatures, bg: BackgroundTasks):
     request_ids = [str(uuid.uuid4()) for _ in X.rows]
 
     payloads = [row.model_dump() for row in X.rows]
-    for payload in payloads:
-        payload["monthly_income_missing"] = int(payload["monthly_income"] is None)
 
     status_code, scores = 200, None
     try:
@@ -121,8 +144,11 @@ def predict_batch(X: BatchFeatures, bg: BackgroundTasks):
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
     model_version = app.state.model_version
 
-    if app.state.db_enabled and scores is not None:
-        bg.add_task(db.save_predictions, request_ids, payloads, scores, model_version, latency_ms, status_code)
+    if app.state.db_enabled:
+        logged_scores = scores if scores is not None else [None] * len(request_ids)
+        bg.add_task(
+            save_batch_with_logging, request_ids, payloads, logged_scores, model_version, latency_ms, status_code
+        )
 
     if status_code == 500:
         return JSONResponse(status_code=500, content={"detail": "inference failed", "request_ids": request_ids})
