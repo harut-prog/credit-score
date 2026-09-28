@@ -6,9 +6,9 @@ class Features(BaseModel):
 
     unsecured_lines: float = Field(..., ge=0)
     age: int = Field(..., ge=18, le=100)
-    past_30_59: int = Field(..., ge=0)
-    past_90: int = Field(..., ge=0)
-    past_60_89: int = Field(..., ge=0)
+    past_30_59: int = Field(..., ge=0, le=95)
+    past_90: int = Field(..., ge=0, le=95)
+    past_60_89: int = Field(..., ge=0, le=95)
     debt_ratio: float = Field(..., ge=0)
     monthly_income: float | None = Field(None, ge=0)
     credit_lines: int = Field(..., ge=0)

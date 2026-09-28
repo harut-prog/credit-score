@@ -9,7 +9,7 @@ QUERY = """
         ts timestamptz NOT NULL DEFAULT now(),
         model_version text NOT NULL,
         features jsonb NOT NULL,
-        score numeric(5,3),
+        score double precision,
         latency_ms integer,
         status_code integer
     )
@@ -46,7 +46,7 @@ def save_prediction(
 def save_predictions(
     request_ids: list[str],
     features: list[dict],
-    scores: list[float],
+    scores: list[float | None],
     model_version: str,
     latency_ms: float,
     status_code: int
