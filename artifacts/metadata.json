@@ -1,7 +1,7 @@
 {
   "model_name": "credit-logreg",
   "model_version": "0.1.1",
-  "trained_at": "2026-09-28T10:28:03+00:00",
+  "trained_at": "2026-09-28T10:39:31+00:00",
   "n_train": 119784,
   "n_test": 29946,
   "removed_invalid_rows": 270,
