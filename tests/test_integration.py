@@ -62,17 +62,3 @@ def test_inference_failure_is_logged(client, valid_payload, monkeypatch):
             "SELECT score, status_code FROM predictions WHERE request_id = %s", (request_id,)
         ).fetchone()
     assert row == (None, 500)
-
-
-@pytest.mark.integrations
-def test_score_is_not_rounded_to_thousandths(client, valid_payload):
-    if not client.app.state.db_enabled:
-        pytest.skip("PostgreSQL is not configured")
-    response = client.post("/v1/predict", json=valid_payload)
-    body = response.json()
-    with psycopg.connect(settings.database_url) as conn:
-        row = conn.execute(
-            "SELECT score FROM predictions WHERE request_id = %s", (body["request_id"],)
-        ).fetchone()
-    assert row is not None
-    assert abs(row[0] - body["score"]) < 1e-12

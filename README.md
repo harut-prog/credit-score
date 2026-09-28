@@ -35,7 +35,7 @@ uv run pytest
 
 ## Kubernetes (kind)
 
-После `docker build -t credit-score:1.0 .` и `kind load docker-image credit-score:1.0 --name credit-score` создайте Secret до применения манифестов:
+После `docker build -t credit-score:1.0 .` и `kind load docker-image credit-score:1.0 --name credit-service` создайте Secret до применения манифестов:
 
 ```bash
 kubectl create secret generic credit-secrets --from-literal=POSTGRES_PASSWORD='replace-with-a-local-password'
