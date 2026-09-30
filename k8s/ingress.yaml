@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: credit-score
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: credit.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: credit-score
+                port:
+                  number: 80
