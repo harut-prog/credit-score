@@ -1,9 +1,21 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: credit-postgres-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: postgres
@@ -24,14 +36,26 @@ spec:
               value: credit
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef: {name: credit-secrets, key: POSTGRES_PASSWORD}
+                secretKeyRef:
+                  name: credit-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "postgres", "-d", "credit"]
+              command: [pg_isready, -U, postgres, -d, credit]
             periodSeconds: 3
           resources:
-            requests: {cpu: 100m, memory: 128Mi}
-            limits: {memory: 256Mi}
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: credit-postgres-data
 ---
 apiVersion: v1
 kind: Service

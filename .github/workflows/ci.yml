@@ -61,81 +61,83 @@ jobs:
   deploy:
     needs: build
     if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-
-    permissions: {contents: read, packages: read}
-    
+    runs-on: [self-hosted, kind]
+    timeout-minutes: 15
+    concurrency:
+      group: credit-kind-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      KIND_CLUSTER: credit-service
+      INGRESS_HOST: credit.localhost
     steps:
       - uses: actions/checkout@v7.0.1
-      - run: echo "IMAGE=ghcr.io/${{ github.repository_owner }}/credit-service:sha-${{ github.sha }}" >> "$GITHUB_ENV"
+      - name: Select existing kind cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Runner name: $RUNNER_NAME"
+          export KUBECONFIG="$RUNNER_TEMP/hw3-kubeconfig"
+          rm -f "$KUBECONFIG"
+          kind export kubeconfig --name "$KIND_CLUSTER" --internal
+          kubectl get nodes
+          echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/credit-service:sha-$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "INGRESS_URL=http://${KIND_CLUSTER}-control-plane:30080" >> "$GITHUB_ENV"
       - uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: helm/kind-action@v1.15.0
-        with:
-          cluster_name: ci
-
-      - name: Load image into kind
+      - name: Load built image
+        shell: bash
         run: |
+          set -euo pipefail
           docker pull "$IMAGE"
-          kind load docker-image "$IMAGE" --name ci
-
-      - name: Create database secrets
+          kind load docker-image "$IMAGE" --name "$KIND_CLUSTER"
+      - name: Apply database Secret
+        shell: bash
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
-          test -n "$DB_PASSWORD" 
+          set -euo pipefail
+          test -n "$DB_PASSWORD"
           kubectl create secret generic credit-secrets \
-          --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
-          --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Deploy PostgreSQL
+            --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Apply database and configuration
+        shell: bash
         run: |
+          set -euo pipefail
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/postgres.yaml
           kubectl rollout status deploy/postgres --timeout=180s
-
-      - name: Deploy API
+      - name: Deploy API and autoscaler
+        shell: bash
         run: |
-          kubectl apply -f k8s/deployment.yaml
+          set -euo pipefail
+          kubectl set image --local -f k8s/deployment.yaml api="$IMAGE" -o yaml | kubectl apply -f -
           kubectl apply -f k8s/service.yaml
-          kubectl set image deploy/credit-score api="$IMAGE"
+          kubectl apply -f k8s/ingress.yaml
+          kubectl apply -f k8s/hpa.yaml
+          kubectl rollout restart deploy/credit-score
           kubectl rollout status deploy/credit-score --timeout=180s
-
-      - name: Smoke test
+      - name: Smoke through Ingress and exact DB request
+        shell: bash
         run: |
-          kubectl port-forward svc/credit-score 8000:80 > /tmp/port-forward.log 2>&1 & port_forward_pid=$!
-          trap 'kill "$port_forward_pid"' EXIT
-
-          for attempt in {1..20}; do
-            if curl --fail --silent http://localhost:8000/health > /dev/null; then
-              break
-            fi
-            sleep 1
-          done
-
-          curl --fail --silent --show-error http://localhost:8000/health
-
-          curl --fail --silent --show-error \
-          -X POST http://localhost:8000/v1/predict \
-          -H "Content-Type: application/json" \
-          --data '{"unsecured_lines":0.3,"age":35,"past_30_59":0,"past_90":0,"past_60_89":0,"debt_ratio":0.5,"monthly_income":5000,"credit_lines":5,"real_estate":1,"dependents":2}' \
-          | python -c 'import json,sys; r=json.load(sys.stdin); assert 0 <= r["score"] <= 1'
-
-          logged_count=$(kubectl exec deploy/postgres -- psql -U postgres -d credit -tAc "SELECT count(*) FROM predictions")
-
-          test "$logged_count" = "1"
-
+          set -euo pipefail
+          python3 scripts/smoke_hw3.py
       - name: Diagnostics
         if: failure()
+        shell: bash
         run: |
-          kubectl get pods -o wide || true
+          kind get clusters || true
+          kubectl get pods,svc,ingress,hpa -A || true
           kubectl get events --sort-by=.lastTimestamp || true
           kubectl describe pods -l app=credit || true
-          kubectl describe pods -l app=postgres || true
-          kubectl logs deployment/credit-score --tail=50 || true
-          kubectl logs deployment/credit-score --previous --tail=50 || true
-          kubectl logs deployment/postgres --tail=50 || true
+          kubectl describe hpa credit-score || true
+          kubectl logs deploy/credit-score --all-pods=true --prefix --tail=80 || true
+          kubectl logs deploy/credit-score --previous --tail=80 || true
+          kubectl logs deploy/postgres --tail=80 || true

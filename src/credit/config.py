@@ -4,6 +4,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     MODEL_PATH: str = "artifacts/baseline_logreg.joblib"
     LOG_LEVEL: str = "INFO"
+    MODEL_NAME: str | None = None
+    MODEL_ALIAS: str = "champion"
+    MLFLOW_TRACKING_URI: str = "http://mlflow.localhost"
 
     POSTGRES_HOST: str | None = None
     POSTGRES_PORT: int | None = None

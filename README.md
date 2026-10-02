@@ -45,3 +45,13 @@ kubectl port-forward service/credit-score 8000:80
 ```
 
 Пароль для базы в Kubernetes хранится только в Secret; значение в команде выше — пример, который нужно заменить. Проверка готовности модели доступна по `http://localhost:8000/ready`, жизни процесса — по `/health`.
+
+## ДЗ 3: MLflow, DVC и постоянный kind
+
+Пошаговая инструкция и порядок проверок находятся в [instructions.md](instructions.md), результаты и ссылки — в разделе H3 [REPORT.md](REPORT.md). Для локального Compose Registry не нужен: если `MODEL_NAME` пуст, сервис берёт включённый в репозиторий `artifacts/baseline_logreg.joblib`. Личный `.env` может переопределить этот режим; перед локальными тестами задайте `MODEL_NAME=''` и `POSTGRES_HOST=''` либо временно уберите `.env`.
+
+В Kubernetes `MODEL_NAME=credit-score-logreg`, `MODEL_ALIAS=champion`; API загружает конкретную Registry version при старте Pod. `/health` сообщает `model_source`, `model_version`, `run_id` и `threshold`. После переноса алиаса выполните `kubectl rollout restart deploy/credit-score`; новая версия появится в `/health` после завершения rollout. Секрет PostgreSQL называется `credit-secrets` и содержит ключ `POSTGRES_PASSWORD`. `k8s/postgres.yaml` использует PVC, поэтому пересоздание Pod сохраняет таблицу.
+
+CSV `data/credit_score.csv` отслеживает DVC, а Git хранит `data/credit_score.csv.dvc`. Указанный в `.dvc/config` remote — локальная папка `C:\dvc-storage`; она не доступна на другой машине через GitHub. Для другого размещения клона настройте remote через `uv run dvc remote modify --local local url <путь>`, затем `uv run dvc pull`. Git SHA определяет версию указателя, DVC восстанавливает CSV, а `data_md5` в MLflow проверяет точный файл. V2 удаляет 270 невалидных строк, сохраняя исходные значения остальных записей. Для возврата V1/V2 восстановите нужный `.dvc` указатель из Git и запустите `uv run dvc checkout`.
+
+Постоянный кластер `credit-service` создан с `platform/kind-config.yaml`: localhost:80 направлен на NodePort 30080 Traefik. MLflow открыт по `http://mlflow.localhost`, API — по `http://credit.localhost`; при системном прокси добавьте `.localhost` в `NO_PROXY`. Порядок первого развёртывания: DVC pull → kind/Traefik/MLflow → обучение и alias `champion` → PostgreSQL/API/HPA → self-hosted runner. Runner подключён к Docker network `kind` с Docker socket и меткой `kind`; GitHub Actions строит образ в облаке, а job `deploy` разворачивает его в существующий кластер и проверяет точный `request_id` в БД. Пока ДЗ проверяется, сохраняйте кластер, MLflow PVC и DVC remote.
