@@ -6,7 +6,7 @@ data:
   LOG_LEVEL: "INFO"
   MODEL_PATH: artifacts/baseline_logreg.joblib
   MODEL_NAME: credit-score-logreg
-  MODEL_ALIAS: champion
+  MODEL_ALIAS: no-such-alias
   MLFLOW_TRACKING_URI: http://mlflow.mlops.svc.cluster.local:5000
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"
