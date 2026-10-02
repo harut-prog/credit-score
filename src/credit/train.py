@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -55,6 +56,7 @@ def make_pipeline(c, class_weight):
         ]), ["dependents"]),
         ("other", StandardScaler(), other),
     ])
+
     return Pipeline([
         ("preprocess", preprocess),
         ("model", LogisticRegression(
@@ -76,6 +78,7 @@ def load_splits(path, seed):
     clean = raw.loc[~invalid].copy()
     assert not clean[["past_30_59", "past_60_89", "past_90"]].isin([96, 98]).any().any()
     assert not clean["age"].eq(0).any()
+
     x, y = clean[FEATURES], clean["SeriousDlqin2yrs"]
     xt, x_test, yt, y_test = train_test_split(
         x, y, test_size=0.2, stratify=y, random_state=seed,
@@ -92,6 +95,12 @@ def load_splits(path, seed):
 
 
 def main():
+    # MLflow prints Unicode symbols in run URLs; Windows redirects often default to cp1251.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=Path, default=Path("data/credit_score.csv"))
     parser.add_argument("--c", type=float, default=1.0)
@@ -174,6 +183,7 @@ def main():
             sk_model=pipeline, name="model", registered_model_name=MODEL_NAME,
             signature=infer_signature(x_train.head(5), pipeline.predict(x_train.head(5))),
             input_example=x_train.head(5),
+            skops_trusted_types=["numpy.dtype"],
         )
         version = str(info.registered_model_version)
         if version == "None":
@@ -191,7 +201,7 @@ def main():
         mlflow.set_tag("gate_decision", "promoted" if promoted else "rejected")
         if champion_ap is not None:
             mlflow.log_metric("champion_val_average_precision", champion_ap)
-            
+
         print(json.dumps({
             "run_id": run.info.run_id, "version": version, "data_md5": data_md5,
             "candidate_ap": val_ap, "champion_ap": champion_ap,

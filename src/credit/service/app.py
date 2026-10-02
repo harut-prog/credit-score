@@ -3,7 +3,6 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-import joblib
 import pandas as pd
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -12,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from credit import db
 from credit.config import settings
+from credit.model_store import load_bundle
 from credit.service.models import BatchFeatures, BatchPrediction, Features, Prediction
 
 logger = logging.getLogger(__name__)
@@ -20,15 +20,14 @@ logger.setLevel(settings.LOG_LEVEL)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    bundle = joblib.load(settings.MODEL_PATH)
-    app.state.pipeline = bundle["pipeline"]
-    app.state.metadata = bundle["metadata"]
-    app.state.model_version = bundle["metadata"]["model_version"]
-
+    pipeline, metadata, identity = load_bundle()
+    app.state.pipeline = pipeline
+    app.state.metadata = metadata
+    app.state.model_identity = identity
+    app.state.model_version = identity["model_version"]
     app.state.db_enabled = bool(settings.database_url)
     if app.state.db_enabled:
         db.init()
-
     yield
     app.state.pipeline = None
 
@@ -36,11 +35,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Probability of a serious delay", version="1.1", lifespan=lifespan)
 
 
-@app.get('/health')
+@app.get("/health")
 def health():
     return {
         "state": "ok", 
-        "model_version": getattr(app.state, "model_version", "unknown"),
+        **app.state.model_identity,
+        "threshold": app.state.metadata["threshold_lr"],
         "log_level": settings.LOG_LEVEL,
     }
 
