@@ -3,6 +3,7 @@ import math
 import os
 import subprocess
 import time
+import urllib.error
 import urllib.request
 import uuid
 
@@ -15,24 +16,44 @@ PAYLOAD = {
 }
 
 
-def request(path, payload=None):
+def request(path, payload=None, retries=0):
     data = None if payload is None else json.dumps(payload).encode()
     req = urllib.request.Request(
         BASE + path, data=data,
         headers={"Host": HOST, "Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=30) as response:
-        return json.load(response)
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            if error.code not in {502, 503, 504} or attempt == retries:
+                raise
+            reason = f"HTTP {error.code} {error.reason}"
+        except urllib.error.URLError as error:
+            if attempt == retries:
+                raise
+            reason = str(error.reason)
+
+        delay = min(2 + attempt, 10)
+        print(
+            f"Ingress is not ready for {path} ({reason}); "
+            f"retrying in {delay}s ({attempt + 1}/{retries})",
+            flush=True,
+        )
+        time.sleep(delay)
 
 
 def main():
-    health = request("/health")
+    # Rollout status can complete just before the ingress controller has
+    # observed the new endpoints. Retry safe GET probes during that short gap.
+    health = request("/health", retries=20)
 
     assert health["state"] == "ok", health
     assert health["model_source"] == "registry", health
     assert health["model_name"] == "credit-score-logreg", health
     assert str(health["model_version"]).isdigit(), health
-    assert request("/ready")["state"] == "ready"
+    assert request("/ready", retries=20)["state"] == "ready"
 
     result = request("/v1/predict", PAYLOAD)
     request_id = str(uuid.UUID(result["request_id"]))
