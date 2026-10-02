@@ -34,7 +34,7 @@ def test_registry_model_and_metadata_use_same_version(monkeypatch):
     monkeypatch.setattr(model_store.mlflow, "set_tracking_uri", lambda _: None)
     monkeypatch.setattr(model_store.mlflow.sklearn, "load_model", fake_load)
     pipeline, metadata, identity = model_store.load_bundle()
-    
+
     assert pipeline is bundle["pipeline"]
     assert metadata == bundle["metadata"]
     assert calls == ["models:/credit-score-logreg/7"]

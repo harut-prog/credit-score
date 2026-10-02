@@ -27,7 +27,7 @@ def request(path, payload=None):
 
 def main():
     health = request("/health")
-    
+
     assert health["state"] == "ok", health
     assert health["model_source"] == "registry", health
     assert health["model_name"] == "credit-score-logreg", health
@@ -41,7 +41,7 @@ def main():
     assert 0 <= result["score"] <= 1, result
     assert result["model_version"] == health["model_version"], result
     assert result["arrear"] == (result["score"] >= health["threshold"]), result
-    
+
     query = (
         "SELECT json_build_object('request_id',request_id,'score',score,"
         "'model_version',model_version,'status_code',status_code) "

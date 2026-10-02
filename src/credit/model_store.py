@@ -37,7 +37,7 @@ def load_bundle():
             "model_alias": None, "model_version": str(bundle["metadata"]["model_version"]),
             "run_id": None,
         }
-    
+
     mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URI)
     client = MlflowClient()
 
