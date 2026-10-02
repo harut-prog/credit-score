@@ -55,7 +55,10 @@ def main():
     assert str(health["model_version"]).isdigit(), health
     assert request("/ready", retries=20)["state"] == "ready"
 
-    result = request("/v1/predict", PAYLOAD)
+    # This is a disposable smoke request. A proxy 502 during endpoint turnover
+    # may mean its response was lost, so a retry can leave an extra audit row.
+    # Keep the exact-row assertion below tied to the returned request_id.
+    result = request("/v1/predict", PAYLOAD, retries=6)
     request_id = str(uuid.UUID(result["request_id"]))
 
     assert result["status_code"] == 200, result
