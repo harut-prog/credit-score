@@ -13,6 +13,10 @@
 
 После проверки отката алиас `champion` возвращён на version 3. На живом сервисе `/health` подтвердил `model_source=registry`, `model_version=3`, `run_id=72327f8482c6423d90815ca32aed949b`. Локальный smoke через Ingress сверил `request_id`, score и версию с одной точной строкой PostgreSQL.
 
+## Red/green CI на hw3
+
+Базовый green: [run 37053723403](https://github.com/harut-prog/credit-score/actions/runs/37053723403). Неверный alias `no-such-alias`: [red 37054105773](https://github.com/harut-prog/credit-score/actions/runs/37054105773) → [green 37054829281](https://github.com/harut-prog/credit-score/actions/runs/37054829281), `CrashLoopBackOff` и `Registered model alias no-such-alias not found`. Неверный `KIND_CLUSTER`: [red 37055871329](https://github.com/harut-prog/credit-score/actions/runs/37055871329) → [green 37137311586](https://github.com/harut-prog/credit-score/actions/runs/37137311586), ошибка `could not locate any control plane nodes`. Неверный Ingress host: [red 37137683401](https://github.com/harut-prog/credit-score/actions/runs/37137683401) → [green 37137910217](https://github.com/harut-prog/credit-score/actions/runs/37137910217), rollout успешен, smoke получил HTTP 404.
+
 ## DVC
 
 V1: 150000 строк, MD5 `cce525a1d41f234f58d3bb52f3d2516b`. V2: 149730 строк, MD5 `d7123f735b51ec6675c136a2a944aa25`. `dvc diff 9e2df3a 7d56f4e` показал один изменённый CSV. В отдельном чистом клоне `dvc pull` получил один файл из remote; MD5 полученного CSV совпал с V2.

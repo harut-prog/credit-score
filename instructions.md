@@ -2,13 +2,15 @@
 
 Первоначальная инструкция составлена 30.09.2026 после сравнения с шаблоном ML_PRO2026. Дедлайн PDF: 04.10, 23:59. Работайте из `C:\PostupashkiProject` в PowerShell 7. Большая часть блоков ниже уже реализована к 01.10; **не выполняйте их повторно без проверки текущего состояния**, иначе создадите лишние версии Registry или перезапишете V2 данных. Фактические результаты и оставшиеся задачи указаны в [REPORT.md](REPORT.md), раздел H3.
 
-### Актуальный статус на 01.10.2026
+### Актуальный статус на 03.10.2026
 
 - MLflow/Traefik/PostgreSQL/API/metrics-server/HPA работают в `credit-service`; локальный smoke через Ingress и точную строку БД прошёл.
 - Три исправленных запуска обучения зарегистрировали версии 1–3: promoted, rejected, promoted. V2 данных сохранила DVC под Git SHA `7d56f4e`, на ней создана версия модели 4, champion остался 3.
 - Runner `credit-kind` зарегистрирован и запущен в контейнере `gh-runner`. Его процесс `run.sh` запущен вручную: после перезапуска Docker его нужно запустить снова (раздел 8).
 - Locust 10/30/60 выполнен, HPA вырос с 2 до 6. Откат champion 3→1→3 через UI и rollout проверен.
-- На очереди: публикация ветки/зелёный deploy GitHub Actions, чистый clone/DVC pull, три пары красного/зелёного deploy и скриншоты GitHub Settings/k9s.
+- Ветка `hw3` опубликована; последний deploy зелёный: [run 37137910217](https://github.com/harut-prog/credit-score/actions/runs/37137910217).
+- Три пары red/green выполнены отдельными коммитами в `hw3`: alias `08ebda0` → `fb3a465`, kind `5023388` → `eaa2ba0`, Ingress `42ec761` → `3c78e59`.
+- GitHub Settings проверены: для внешних contributors требуется approval, runner `credit-kind` online с labels `self-hosted`, `Linux`, `X64`, `kind`. Скриншоты k9s/терминала и GitHub нужно добавить после сохранения пользователем.
 
 ## 0. Проверенное состояние — отсюда начинаем
 
@@ -57,7 +59,7 @@
 
 В шаблоне deploy включён только для workflow_dispatch. У нас по умолчанию после push в master, чтобы обязательные красные/зелёные пары запускались после merge. Если берёте звёздочку ручного deploy, добавьте workflow_dispatch в on и ограничьте deploy ручным событием, как в шаблоне; запускать его надо с default branch, иначе build с условием master будет skipped и deploy из-за needs тоже не запустится. Сохраните доказательство ожидания/ручного запуска по PDF.
 
-**Текущая точка продолжения:** шаг 1 выполнен; Ingress и MLflow из шага 2 работают; сначала синхронизировать Service Traefik командой helm upgrade ниже, затем начать шаг 3. Реализации обучения/loader/smoke/HPA/runner ещё нет.
+**Текущая точка продолжения:** основная реализация, DVC, Registry, rollback, HPA, runner и red/green CI-пары выполнены. Перед сдачей обновите ссылки/скриншоты в отчёте и не добавляйте локальные сырые CSV/логи в Git.
 
 ## 1. Git/DVC уже выполнены: проверить, без повторного git rm
 
@@ -1190,7 +1192,7 @@ Set-Location C:\PostupashkiProject
 
 ## 12. Три обязательных красных deploy
 
-Только после зелёного полного пути. PDF требует отдельный коммит поломки в основной ветке и починку следующим. Сохраните PR-историю: PR с поломкой → merge → red; PR с починкой → merge → green. Не squash обе версии в один коммит до запуска.
+Только после зелёного полного пути. В этой работе по правилу пользователя все эксперименты выполнены отдельными коммитами только в `hw3`; новые ветки и PR для этих сценариев не создаются. Не squash ошибочную и исправляющую версии до запуска.
 
 | Поломка | Что поменять | Ожидаемый диагноз |
 |---|---|---|
@@ -1265,7 +1267,7 @@ Invoke-RestMethod http://localhost:8080/ready
 - [ ] Green deploy на credit-kind; smoke через Ingress.
 - [ ] DVC V1/V2, push/diff/checkout/pull в новом clone.
 - [ ] HPA рост/спад, SuccessfulRescale, 3 прогона, requests по собственным замерам.
-- [ ] 3 пары red/green с URL и диагнозом.
-- [ ] README/REPORT/скрины доступны, 8 ответов, финальный PR и default branch зелёная.
+- [x] 3 пары red/green с URL и диагнозом в `REPORT.md`.
+- [ ] README/REPORT/скрины доступны, 8 ответов; скриншоты GitHub/k9s ещё нужно добавить. Финальный run `37137910217` зелёный в `hw3`; default branch не менялся по правилу пользователя.
 
 Источники: PDF ДЗ 3; чат «Исправить замечания по ДЗ 1»; фактические проверки проекта 30.09.2026. Официальные технические ссылки: [MLflow sklearn](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.sklearn.html), [ModelInfo/версии](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.models.html), [Registry aliases](https://www.mlflow.org/docs/latest/ml/model-registry/workflow/), [HPA](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/), [runner image](https://github.com/actions/runner/blob/main/images/Dockerfile), [Traefik values](https://github.com/traefik/traefik-helm-chart/blob/master/traefik/values.yaml).
