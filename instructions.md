@@ -70,7 +70,7 @@ git ls-files data/credit_score.csv
 uv run dvc status
 uv run dvc remote list
 $dataV1Commit = '3c3e434'
-New-Item -ItemType Directory -Force report/hw3,docs/img/hw3 | Out-Null
+New-Item -ItemType Directory -Force report/train,report/hpa,docs/img/hw3 | Out-Null
 ```
 
 Ожидается пустой вывод git ls-files и up to date у DVC. Коммит 3c3e434 уже удалил CSV из индекса, сохранил его на диске и убрал игнорирование docs. Повторять git rm, dvc init и remote add не нужно. Сохраните SHA V1 в REPORT.
@@ -412,15 +412,15 @@ $env:MLFLOW_TRACKING_URI='http://mlflow.localhost'
 Я проверил следующие варианты на вашем CSV и отдельной validation: AP 0.3746765 → 0.3695169 → 0.3760703. Это локальное исследование, **не готовые MLflow runs**. Сделайте реальные три запуска:
 
 ```powershell
-uv run python -m credit.train --c 0.00001 --class-weight none --min-gain 0.001 2>&1 | Tee-Object report/hw3/train1.txt
+uv run python -m credit.train --c 0.00001 --class-weight none --min-gain 0.001 2>&1 | Tee-Object report/train/train1.txt
 if ($LASTEXITCODE -ne 0) { throw 'train1 failed' }
-uv run python -m credit.train --c 1 --class-weight none --min-gain 0.001 2>&1 | Tee-Object report/hw3/train2.txt
+uv run python -m credit.train --c 1 --class-weight none --min-gain 0.001 2>&1 | Tee-Object report/train/train2.txt
 if ($LASTEXITCODE -ne 0) { throw 'train2 failed' }
-uv run python -m credit.train --c 1 --class-weight balanced --min-gain 0.001 2>&1 | Tee-Object report/hw3/train3.txt
+uv run python -m credit.train --c 1 --class-weight balanced --min-gain 0.001 2>&1 | Tee-Object report/train/train3.txt
 if ($LASTEXITCODE -ne 0) { throw 'train3 failed' }
 ```
 
-**Уже проверено 30.09.2026 после исправления ошибок:** все три повторных запуска завершились с exit code 0. Их логи — report/hw3/train1-fixed.txt, train2-fixed.txt и train3-fixed.txt. Версия 1: AP=0.3746765251, promoted=true; версия 2: AP=0.3695169145, promoted=false; версия 3: AP=0.3760703211, promoted=true. Текущий champion в Registry — 3. Повторять эти команды сейчас ради создания ещё трёх версий не требуется; сохраните скрин Aliases и переходите к проверке loader. Старые train1.txt/train2.txt/train3.txt оставлены как доказательство найденной поломки. Правки train.py ещё нужно закоммитить.
+**Уже проверено 30.09.2026 после исправления ошибок:** все три повторных запуска завершились с exit code 0. Их предъявляемые логи — `report/train/train1-fixed.txt`, `train2-fixed.txt` и `train3-fixed.txt`. Версия 1: AP=0.3746765251, promoted=true; версия 2: AP=0.3695169145, promoted=false; версия 3: AP=0.3760703211, promoted=true. Текущий champion в Registry — 3. Повторять эти команды сейчас ради создания ещё трёх версий не требуется.
 
 При пустом Registry первый станет champion; второй ухудшится и останется только challenger; третий улучшает первый примерно на 0.001394, проходя запас 0.001. Сверяйте фактические результаты, не подделывайте метрики. Если champion уже существует, первый запуск не является стартом пустого реестра — учитывайте историю.
 
@@ -428,7 +428,7 @@ MLflow 3.16 сохраняет sklearn через skops. Проверенные 
 
 ### Как читать ошибки первых трёх запусков
 
-Исходные report/hw3/train1.txt, train2.txt и train3.txt упали до регистрации: UntrustedTypesFoundException для numpy.dtype. Затем при завершении MLflow попытался напечатать Unicode-эмодзи в cp1251 и получил UnicodeEncodeError. В main выше теперь включён UTF-8 stdout/stderr. Старые логи сохраняйте для журнала проблем, повторные сохраняйте под новыми именами, например train1-fixed.txt.
+Первые логи до исправления не являются обязательным артефактом сдачи и удалены из рабочей папки после фиксации причины в этом журнале. Ошибки были связаны с доверием `numpy.dtype` в skops и кодировкой cp1251; рабочие логи сохранены под именами `train1-fixed.txt`–`train3-fixed.txt`.
 
 При повторной проверке также обнаружен системный Windows proxy: requests.get к mlflow.localhost возвращал 503, а прямой запрос без proxy — 200 OK. Код выше добавляет локальные адреса в NO_PROXY/no_proxy, сохраняя существующий список. При запуске других локальных MLflow-команд задайте обе переменные в терминале: $env:NO_PROXY='localhost,127.0.0.1,mlflow.localhost'; $env:no_proxy=$env:NO_PROXY. Ошибка 503 или долгие retries при рабочем браузере требуют проверить proxy, а не удалять кластер.
 
@@ -814,9 +814,9 @@ kubectl get hpa -w
 В другом терминале последовательно, с ожиданием спада до 2 Pods между прогонами:
 
 ```powershell
-uv run locust -f locustfile.py --headless -u 10 -r 5 -t 4m --host http://credit.localhost --csv report/hw3/hpa10
-uv run locust -f locustfile.py --headless -u 30 -r 10 -t 4m --host http://credit.localhost --csv report/hw3/hpa30
-uv run locust -f locustfile.py --headless -u 60 -r 20 -t 4m --host http://credit.localhost --csv report/hw3/hpa60
+uv run locust -f locustfile.py --headless -u 10 -r 5 -t 4m --host http://credit.localhost --csv report/hpa/hpa10
+uv run locust -f locustfile.py --headless -u 30 -r 10 -t 4m --host http://credit.localhost --csv report/hpa/hpa30
+uv run locust -f locustfile.py --headless -u 60 -r 20 -t 4m --host http://credit.localhost --csv report/hpa/hpa60
 ```
 
 Во время: kubectl top pods, k9s → :hpa. После: kubectl describe hpa credit-score. Сохранить **рост и спад**, SuccessfulRescale и CSV. Downscale обычно ждёт около 5 минут. Если 60 users недостаточно, сохраните результат и увеличьте нагрузку осмысленно; не копируйте чужие секунды/реплики.
@@ -1142,15 +1142,15 @@ print({
 
 ```powershell
 uv run dvc status
-uv run python scripts/make_data_v2.py 2>&1 | Tee-Object report/hw3/data-v2.txt
+uv run python scripts/make_data_v2.py 2>&1 | Tee-Object report/data-v2.txt
 uv run dvc add data/credit_score.csv
 git add scripts/make_data_v2.py data/credit_score.csv.dvc
 git commit -m 'data v2: remove 270 invalid borrower records'
 $dataV2Commit=git rev-parse HEAD
-uv run dvc push 2>&1 | Tee-Object report/hw3/dvc-push-v2.txt
+uv run dvc push 2>&1 | Tee-Object report/dvc-push-v2.txt
 uv run dvc diff $dataV1Commit $dataV2Commit
 $env:MLFLOW_TRACKING_URI='http://mlflow.localhost'
-uv run python -m credit.train --c 1 --class-weight balanced --min-gain 0.001 2>&1 | Tee-Object report/hw3/train-data-v2.txt
+uv run python -m credit.train --c 1 --class-weight balanced --min-gain 0.001 2>&1 | Tee-Object report/train/train-data-v2.txt
 ```
 
 V2 run не обязан повысить champion: данные после training-cleaning одинаковые. Требуется новый data_md5 в MLflow. Если evaluation_md5 всё же изменился, не отключайте защиту гейта: найдите изменение значений/порядка/split.
