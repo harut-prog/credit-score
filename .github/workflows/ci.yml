@@ -70,7 +70,7 @@ jobs:
       contents: read
       packages: read
     env:
-      KIND_CLUSTER: credit-service-missing
+      KIND_CLUSTER: credit-service
       INGRESS_HOST: credit.localhost
     steps:
       - uses: actions/checkout@v7.0.1
