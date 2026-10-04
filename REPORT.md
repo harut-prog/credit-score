@@ -200,7 +200,7 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 
 ![Self-hosted runner credit-kind](docs/img/hw3/github-runner-credit-kind.png)
 
-Отдельный исторический снимок `hpa-events` не сохранён: Kubernetes показывает только недавние события. События `SuccessfulRescale` 2 → 4 → 6 сохранены текстом в `report/hpa/hpa30-cluster.txt` и `report/hpa/hpa60-cluster.txt`, а CSV Locust находятся в `report/hpa/`.
+Исторические события HPA подтверждены отдельным снимком: [hpa-events.png](docs/img/hw3/hpa-events.png). На нём видны `SuccessfulRescale` 2 → 4 и 4 → 6; итоговый снимок [hpa30-rerun.png](docs/img/hw3/hpa30-rerun.png) показывает рост до шести реплик и последующее снижение после остановки нагрузки. Текстовый журнал и CSV нового прогона сохранены в `report/hpa/hpa30-rerun_events.txt` и `report/hpa/hpa30-rerun_*.csv`.
 
 Кластер kind `credit-service` создан с пробросом localhost:80 на NodePort 30080. Traefik направляет `mlflow.localhost` в MLflow, а `credit.localhost` в API. На момент проверки в кластере были готовы MLflow, Traefik, metrics-server, PostgreSQL и две реплики API. HPA установлен с границами 2–6 и порогом 60% CPU. API загружает из Model Registry алиас `champion`, а `/health` сообщает фактическую версию и `run_id`.
 
@@ -211,7 +211,7 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 | Требование | Факт и доказательство |
 |---|---|
 | MLflow/Ingress | `mlflow.localhost` открывается в разделе Model training; Registry содержит `credit-score-logreg` версии 1–4. `kubectl get pods,ingress -A` и конфигурация — в `platform/` и `k8s/`. |
-| Три запуска и гейт | Логи `report/train/train{1,2,3}-fixed.txt`; [сводка](report/evidence.md). AP на одном validation split: 0.374676525 → 0.369516914 → 0.376070321. Версия 2 отклонена; `champion=3`. Сохраняются параметры, метрики, PR curve, metadata и `data_md5`. |
+| Три запуска и гейт | Логи `report/train/train{1,2,3}.txt`; [сводка](report/evidence.md). AP на одном validation split: 0.374676525 → 0.369516914 → 0.376070321. Версия 2 отклонена; `champion=3`. Сохраняются параметры, метрики, PR curve, metadata и `data_md5`. |
 | Registry и API | `/health` показывает `champion=3`; smoke проверил версию, ответ и точную запись в БД. Loader валидирует состав признаков и threshold, ошибка Registry не маскируется fallback файлом. |
 | Git/DVC | V1: `cce525a1d41f234f58d3bb52f3d2516b` (150000 строк); V2: `d7123f735b51ec6675c136a2a944aa25` (149730 строк). [Трансформация](report/data-v2.txt), [DVC push](report/dvc-push-v2.txt), [проверка чистого клона](report/evidence.md), Git V2 `7d56f4e2fe269d88175d7d0e31c4f739edaf6fe4`. `dvc diff 9e2df3a 7d56f4e` показал один изменённый CSV. |
 | HPA и нагрузка | [Публичная таблица измерений](report/evidence.md). CSV и снимки HPA сохранены в [report/hpa](report/hpa). |
@@ -245,7 +245,7 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 
 1. `tests` и `build` выполняются на GitHub-hosted runner: им нужны исходники, зависимости и право публикации образа, но не локальный Kubernetes. `deploy` выполняется на self-hosted runner в Docker рядом с kind, поскольку кластер за домашним NAT и не имеет публичного API. Альтернативы — VPN/tunnel с контролем доступа или внешний кластер; открывать Kubernetes API в интернет ради домашней работы не нужно.
 
-2. Сеть Docker `kind` даёт runner доступ к адресу control-plane и Ingress из контейнера. Docker socket нужен для `kind export kubeconfig`, `docker pull` и `kind load docker-image`; группа `0` даёт непривилегированному пользователю runner доступ к этому socket. Такой доступ практически эквивалентен управлению Docker-host, поэтому runner выделен только под доверенный репозиторий, а внешние PR должны требовать одобрения до исполнения на нём.
+2. Сеть Docker `kind` даёт runner доступ к адресу control-plane и Ingress из контейнера. Docker socket нужен для `kind export kubeconfig`, `docker pull` и `kind load docker-image`; группа `0` даёт непривилегированному пользователю runner доступ к этому сокету. Такой доступ практически эквивалентен управлению Docker-host, поэтому runner выделен только под доверенный репозиторий, а внешние PR должны требовать одобрения до исполнения на нём.
 
 3. Workflow получает `DB_PASSWORD` из GitHub Secret только в окружение шага. `kubectl create secret --dry-run=client -o yaml | kubectl apply -f -` создаёт или обновляет один Kubernetes Secret повторяемо: dry-run готовит объект, apply отправляет его в кластер. Пароль не записывается в Git и не печатается в логах; Deployment и PostgreSQL получают его через `secretRef`/`secretKeyRef`.
 
@@ -253,7 +253,7 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 
 5. До первого обучения Registry ещё не содержит `champion`. Под с `MODEL_NAME` не может загрузить модель и не должен сообщать Ready; при таком порядке развёртывания CI завершится ошибкой rollout, а в логах будет ошибка поиска alias. Поэтому сначала запуск обучения и проверка champion в MLflow, затем API/runner. Состояние видно через `kubectl get pods` или k9s и шаг Diagnostics в GitHub Actions.
 
-6. Браузер обращается к localhost:80 с Host `mlflow.localhost`. Порт 80 проброшен при **создании** kind на NodePort 30080; Traefik Ingress выбирает `mlflow` Service по Host, Service ведёт на Pod:5000. Для API аналогично используется Host `credit.localhost`. В MLflow отдельно разрешены нужные host/origin настройки; одно лишь создание Ingress не исправляет отказ приложения из-за проверки Host/CORS.
+6. Браузер обращается к localhost:80 с Host `mlflow.localhost`. Порт 80 проброшен при создании kind на NodePort 30080; Traefik Ingress выбирает `mlflow` Service по Host, Service ведёт на Pod:5000. Для API аналогично используется Host `credit.localhost`. В MLflow отдельно разрешены нужные host/origin настройки; одно лишь создание Ingress не исправляет отказ приложения из-за проверки Host/CORS.
 
 7. HPA считает утилизацию как используемый CPU / `requests.cpu` и приблизительно рекомендует `ceil(текущие реплики × текущая утилизация / 60%)`, с ограничением 2–6. При 250m и малой нагрузке около 2% было недостаточно для роста; при 50m и 30 пользователях наблюдалось 1745%, поэтому целевое число упёрлось в максимум 6. Спад происходит с задержкой стабилизации HPA, а не сразу после остановки Locust; точное время зафиксировано отдельно ниже.
 
@@ -262,5 +262,5 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 ## Журнал проблем ДЗ 3
 
 - В первых трёх вызовах обучения загрузчик skops не доверял `numpy.dtype`; затем Windows cp1251 ломал печать ссылки MLflow, а системный proxy мешал `.localhost`. После исправлений три запуска завершились и дали решения гейта; старые логи оставлены для разбора ошибки, рабочие имеют суффикс `-fixed`.
-- При 30 пользователях во время роста реплик Ingress один раз вернул 502. Это не ошибка обучения; частота 0.0085%. Дальше сравниваю с прогоном 60 пользователей и проверяю, повторяется ли отказ.
+- При 30 пользователях во время роста реплик Ingress один раз вернул 502. Дальше сравниваю с прогоном 60 пользователей и проверяю, повторяется ли отказ.
 - Local DVC remote `C:\dvc-storage` подходит для соседнего клона на этом компьютере, но не переносится на другую машину без копирования storage или смены remote. Это явно указано в README.
