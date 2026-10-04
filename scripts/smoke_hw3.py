@@ -45,8 +45,6 @@ def request(path, payload=None, retries=0):
 
 
 def main():
-    # Rollout status can complete just before the ingress controller has
-    # observed the new endpoints. Retry safe GET probes during that short gap.
     health = request("/health", retries=20)
 
     assert health["state"] == "ok", health
@@ -55,9 +53,6 @@ def main():
     assert str(health["model_version"]).isdigit(), health
     assert request("/ready", retries=20)["state"] == "ready"
 
-    # This is a disposable smoke request. A proxy 502 during endpoint turnover
-    # may mean its response was lost, so a retry can leave an extra audit row.
-    # Keep the exact-row assertion below tied to the returned request_id.
     result = request("/v1/predict", PAYLOAD, retries=6)
     request_id = str(uuid.UUID(result["request_id"]))
 

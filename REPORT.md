@@ -200,7 +200,15 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 
 ![Self-hosted runner credit-kind](docs/img/hw3/github-runner-credit-kind.png)
 
-Исторические события HPA подтверждены отдельным снимком: [hpa-events.png](docs/img/hw3/hpa-events.png). На нём видны `SuccessfulRescale` 2 → 4 и 4 → 6; итоговый снимок [hpa30-rerun.png](docs/img/hw3/hpa30-rerun.png) показывает рост до шести реплик и последующее снижение после остановки нагрузки. Текстовый журнал и CSV нового прогона сохранены в `report/hpa/hpa30-rerun_events.txt` и `report/hpa/hpa30-rerun_*.csv`.
+Исторические события HPA подтверждены снимком ниже. На нём видны переходы с 2 на 4 и с 4 на 6 реплик.
+
+![История событий HPA](docs/img/hw3/hpa-events.png)
+
+Итог наблюдения за HPA — ниже: во время нагрузки число реплик выросло до 6, после остановки нагрузки вернулось к 2.
+
+![Повторный прогон HPA](docs/img/hw3/hpa30-rerun.png)
+
+Текстовый журнал находится в `report/hpa/hpa30-cluster.txt`, результаты Locust — в `report/hpa/hpa30_*.csv`.
 
 Кластер kind `credit-service` создан с пробросом localhost:80 на NodePort 30080. Traefik направляет `mlflow.localhost` в MLflow, а `credit.localhost` в API. На момент проверки в кластере были готовы MLflow, Traefik, metrics-server, PostgreSQL и две реплики API. HPA установлен с границами 2–6 и порогом 60% CPU. API загружает из Model Registry алиас `champion`, а `/health` сообщает фактическую версию и `run_id`.
 
