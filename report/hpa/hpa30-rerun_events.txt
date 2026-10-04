@@ -1,0 +1,45 @@
+NAMESPACE   NAME           REFERENCE                 TARGETS          MINPODS   MAXPODS   REPLICAS   AGE
+default     credit-score   Deployment/credit-score   cpu: 1451%/60%   2         6         6          3d12h
+
+
+default              43m         Normal    SandboxChanged                 pod/credit-score-f7df7dfd8-kxfl5                           Pod sandbox changed, it will be killed and re-created.
+default              43m         Normal    Created                        pod/credit-score-f7df7dfd8-9zwpt                           Container created
+default              43m         Normal    Pulled                         pod/credit-score-f7df7dfd8-9zwpt                           Container image "ghcr.io/harut-prog/credit-service:sha-a3785f5d127f96cdfb941c476886d794bca99ed9" already present on machine and can be accessed by the pod
+default              43m         Normal    SandboxChanged                 pod/credit-score-f7df7dfd8-9zwpt                           Pod sandbox changed, it will be killed and re-created.
+default              43m         Normal    Created                        pod/credit-score-f7df7dfd8-kxfl5                           Container created
+default              43m         Normal    Started                        pod/credit-score-f7df7dfd8-kxfl5                           Container started
+default              43m         Normal    Started                        pod/credit-score-f7df7dfd8-9zwpt                           Container started
+default              42m         Warning   Unhealthy                      pod/credit-score-f7df7dfd8-kxfl5                           Startup probe failed: Get "http://10.244.0.5:8000/health": dial tcp 10.244.0.5:8000: connect: connection refused
+default              42m         Warning   Unhealthy                      pod/credit-score-f7df7dfd8-9zwpt                           Startup probe failed: Get "http://10.244.0.4:8000/health": dial tcp 10.244.0.4:8000: connect: connection refused
+default              42m         Warning   FailedGetResourceMetric        horizontalpodautoscaler/credit-score                       failed to get cpu utilization: unable to get metrics for resource cpu: unable to fetch metrics from resource metrics API: the server is currently unable to handle the request (get pods.metrics.k8s.io)
+default              42m         Warning   FailedComputeMetricsReplicas   horizontalpodautoscaler/credit-score                       invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: unable to fetch metrics from resource metrics API: the server is currently unable to handle the request (get pods.metrics.k8s.io)
+default              80s         Warning   Unhealthy                      pod/credit-score-f7df7dfd8-9zwpt                           Readiness probe failed: Get "http://10.244.0.4:8000/ready": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+default              62s         Normal    SuccessfulCreate               replicaset/credit-score-f7df7dfd8                          Created pod: credit-score-f7df7dfd8-49pzc
+default              62s         Normal    Scheduled                      pod/credit-score-f7df7dfd8-49pzc                           Successfully assigned default/credit-score-f7df7dfd8-49pzc to credit-service-control-plane
+default              62s         Normal    SuccessfulCreate               replicaset/credit-score-f7df7dfd8                          Created pod: credit-score-f7df7dfd8-nck7c
+default              62s         Normal    Scheduled                      pod/credit-score-f7df7dfd8-nck7c                           Successfully assigned default/credit-score-f7df7dfd8-nck7c to credit-service-control-plane
+default              62s         Normal    SuccessfulRescale              horizontalpodautoscaler/credit-score                       New size: 4; reason: cpu resource utilization (percentage of request) above target
+default              62s         Normal    ScalingReplicaSet              deployment/credit-score                                    Scaled up replica set credit-score-f7df7dfd8 from 2 to 4
+default              61s         Normal    Started                        pod/credit-score-f7df7dfd8-nck7c                           Container started
+default              61s         Normal    Created                        pod/credit-score-f7df7dfd8-nck7c                           Container created
+default              61s         Normal    Pulled                         pod/credit-score-f7df7dfd8-49pzc                           Container image "ghcr.io/harut-prog/credit-service:sha-a3785f5d127f96cdfb941c476886d794bca99ed9" already present on machine and can be accessed by the pod
+default              61s         Normal    Pulled                         pod/credit-score-f7df7dfd8-nck7c                           Container image "ghcr.io/harut-prog/credit-service:sha-a3785f5d127f96cdfb941c476886d794bca99ed9" already present on machine and can be accessed by the pod
+default              61s         Normal    Created                        pod/credit-score-f7df7dfd8-49pzc                           Container created
+default              61s         Normal    Started                        pod/credit-score-f7df7dfd8-49pzc                           Container started
+default              52s         Warning   Unhealthy                      pod/credit-score-f7df7dfd8-49pzc                           Startup probe failed: Get "http://10.244.0.12:8000/health": dial tcp 10.244.0.12:8000: connect: connection refused
+default              52s         Warning   Unhealthy                      pod/credit-score-f7df7dfd8-nck7c                           Startup probe failed: Get "http://10.244.0.11:8000/health": dial tcp 10.244.0.11:8000: connect: connection refused
+default              47s         Normal    SuccessfulCreate               replicaset/credit-score-f7df7dfd8                          Created pod: credit-score-f7df7dfd8-59b5d
+default              47s         Normal    Scheduled                      pod/credit-score-f7df7dfd8-8gv4c                           Successfully assigned default/credit-score-f7df7dfd8-8gv4c to credit-service-control-plane
+default              47s         Normal    ScalingReplicaSet              deployment/credit-score                                    Scaled up replica set credit-score-f7df7dfd8 from 4 to 6
+default              47s         Normal    SuccessfulCreate               replicaset/credit-score-f7df7dfd8                          Created pod: credit-score-f7df7dfd8-8gv4c
+default              47s         Normal    SuccessfulRescale              horizontalpodautoscaler/credit-score                       New size: 6; reason: cpu resource utilization (percentage of request) above target
+default              47s         Normal    Scheduled                      pod/credit-score-f7df7dfd8-59b5d                           Successfully assigned default/credit-score-f7df7dfd8-59b5d to credit-service-control-plane
+default              46s         Normal    Started                        pod/credit-score-f7df7dfd8-59b5d                           Container started
+default              46s         Normal    Pulled                         pod/credit-score-f7df7dfd8-59b5d                           Container image "ghcr.io/harut-prog/credit-service:sha-a3785f5d127f96cdfb941c476886d794bca99ed9" already present on machine and can be accessed by the pod
+default              46s         Normal    Created                        pod/credit-score-f7df7dfd8-59b5d                           Container created
+default              46s         Normal    Pulled                         pod/credit-score-f7df7dfd8-8gv4c                           Container image "ghcr.io/harut-prog/credit-service:sha-a3785f5d127f96cdfb941c476886d794bca99ed9" already present on machine and can be accessed by the pod
+default              46s         Normal    Created                        pod/credit-score-f7df7dfd8-8gv4c                           Container created
+default              46s         Normal    Started                        pod/credit-score-f7df7dfd8-8gv4c                           Container started
+default              42s         Warning   Unhealthy                      pod/credit-score-f7df7dfd8-59b5d                           Startup probe failed: Get "http://10.244.0.14:8000/health": dial tcp 10.244.0.14:8000: connect: connection refused
+default              42s         Warning   Unhealthy                      pod/credit-score-f7df7dfd8-8gv4c                           Startup probe failed: Get "http://10.244.0.13:8000/health": dial tcp 10.244.0.13:8000: connect: connection refused
+
