@@ -1,0 +1,52 @@
+raw=150000 removed=270 clean=149730
+train=89838 val=29946 test=29946
+{"run_id": "fd242f25055c4fbdad3f355155b40869", "version": "2", "data_md5": "cce525a1d41f234f58d3bb52f3d2516b", "candidate_ap": 0.36951691447857227, "champion_ap": 0.3746765250657209, "MIN_GAIN": 0.001, "promoted": false}
+🏃 View run C=1.0;weight=none at: http://mlflow.localhost/#/experiments/1/runs/fd242f25055c4fbdad3f355155b40869
+🧪 View experiment at: http://mlflow.localhost/#/experiments/1
+
+--- STDERR ---
+
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 11.57it/s]
+Downloading artifacts: 100%|██████████| 1/1 [00:00<00:00, 11.57it/s]
+
+Downloading artifacts:   0%|          | 0/7 [00:00<?, ?it/s]
+Downloading artifacts:  14%|█▍        | 1/7 [00:00<00:00, 35.40it/s]
+Downloading artifacts:  29%|██▊       | 2/7 [00:00<00:00, 58.49it/s]
+Downloading artifacts:  43%|████▎     | 3/7 [00:00<00:00, 51.43it/s]
+Downloading artifacts:  57%|█████▋    | 4/7 [00:00<00:00, 58.22it/s]
+Downloading artifacts:  71%|███████▏  | 5/7 [00:00<00:00, 64.87it/s]
+Downloading artifacts:  86%|████████▌ | 6/7 [00:00<00:00, 62.54it/s]
+Downloading artifacts: 100%|██████████| 7/7 [00:00<00:00, 71.22it/s]
+Downloading artifacts: 100%|██████████| 7/7 [00:00<00:00, 71.22it/s]
+C:\PostupashkiProject\.venv\Lib\site-packages\mlflow\types\utils.py:440: UserWarning: Hint: Inferred schema contains integer column(s). Integer columns in Python cannot represent missing values. If your input data contains missing values at inference time, it will be encoded as floats and will cause a schema enforcement error. The best way to avoid this problem is to infer the model schema based on a realistic data sample (training dataset) that includes missing values. Alternatively, you can declare integer columns as doubles (float64) whenever these columns may have missing values. See `Handling Integers With Missing Values <https://www.mlflow.org/docs/latest/models.html#handling-integers-with-missing-values>`_ for more details.
+  warnings.warn(
+2026/09/30 22:36:40 INFO mlflow.utils.uv_utils: Detected uv project: found uv.lock and pyproject.toml in C:\PostupashkiProject
+2026/09/30 22:36:41 INFO mlflow.utils.uv_utils: Detected uv project: found uv.lock and pyproject.toml in C:\PostupashkiProject
+2026/09/30 22:36:41 INFO mlflow.utils.environment: Detected uv project at C:\PostupashkiProject. Attempting to export requirements via 'uv export'.
+2026/09/30 22:36:41 INFO mlflow.utils.uv_utils: Exported 99 dependencies via uv
+2026/09/30 22:36:41 INFO mlflow.utils.environment: Successfully exported 99 requirements from uv project. Skipping package capture based inference.
+2026/09/30 22:36:43 WARNING mlflow.utils.environment: Failed to resolve installed pip version. ``pip`` will be added to conda.yaml environment spec without a version specifier.
+
+Downloading artifacts:   0%|          | 0/7 [00:00<?, ?it/s]
+Downloading artifacts:  14%|█▍        | 1/7 [00:00<00:00, 1562.12it/s]
+Downloading artifacts:  29%|██▊       | 2/7 [00:00<00:00, 1508.47it/s]
+Downloading artifacts:  43%|████▎     | 3/7 [00:00<00:00, 2262.71it/s]
+Downloading artifacts:  57%|█████▋    | 4/7 [00:00<00:00, 719.13it/s] 
+Downloading artifacts:  71%|███████▏  | 5/7 [00:00<00:00, 806.26it/s]
+Downloading artifacts:  86%|████████▌ | 6/7 [00:00<00:00, 748.47it/s]
+Downloading artifacts: 100%|██████████| 7/7 [00:00<00:00, 873.22it/s]
+Downloading artifacts: 100%|██████████| 7/7 [00:00<00:00, 775.76it/s]
+Registered model 'credit-score-logreg' already exists. Creating a new version of this model...
+2026/09/30 22:36:44 INFO mlflow.store.model_registry.abstract_store: Waiting up to 300 seconds for model version to finish creation. Model name: credit-score-logreg, version 2
+Created version '2' of model 'credit-score-logreg'.
+
+Downloading artifacts:   0%|          | 0/7 [00:00<?, ?it/s]
+Downloading artifacts:  14%|█▍        | 1/7 [00:00<00:00, 35.09it/s]
+Downloading artifacts:  29%|██▊       | 2/7 [00:00<00:00, 62.31it/s]
+Downloading artifacts:  43%|████▎     | 3/7 [00:00<00:00, 47.61it/s]
+Downloading artifacts:  57%|█████▋    | 4/7 [00:00<00:00, 57.33it/s]
+Downloading artifacts:  71%|███████▏  | 5/7 [00:00<00:00, 64.20it/s]
+Downloading artifacts:  86%|████████▌ | 6/7 [00:00<00:00, 64.93it/s]
+Downloading artifacts: 100%|██████████| 7/7 [00:00<00:00, 75.25it/s]
+Downloading artifacts: 100%|██████████| 7/7 [00:00<00:00, 75.25it/s]
