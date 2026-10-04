@@ -178,51 +178,25 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 
 4. **Недоступная память (runs #19 → #20).** Первая попытка с огромным `requests.memory` при `limits.memory: 1Gi` была отклонена Kubernetes API ещё при `kubectl apply`, потому что request превышал limit. Для повторной симуляции я сделал request и limit одинаково большими: манифест применился, rollout завершился таймаутом, а диагностика подтвердила Pod `Pending` и `FailedScheduling` с причиной `Insufficient memory`. Затем вернул `requests.memory: 512Mi` и `limits.memory: 1Gi`; run #20 прошёл все три job.
 
-5. **Контролируемые red/green deploy в HW3.** Все шесть запусков сделаны отдельными последовательными коммитами только в ветке `hw3` по правилу пользователя. Базовый green: [bea7735 / run 37053723403](https://github.com/harut-prog/credit-score/actions/runs/37053723403). Неверный Registry alias: [red 08ebda0 / run 37054105773](https://github.com/harut-prog/credit-score/actions/runs/37054105773) → [green fb3a465 / run 37054829281](https://github.com/harut-prog/credit-score/actions/runs/37054829281). Pod ушёл в `CrashLoopBackOff`, лог MLflow сообщил `Registered model alias no-such-alias not found`; возврат `champion` восстановил rollout.
-
-6. **Неверное имя kind-кластера.** [red 5023388 / run 37055871329](https://github.com/harut-prog/credit-score/actions/runs/37055871329) → [green eaa2ba0 / run 37137311586](https://github.com/harut-prog/credit-score/actions/runs/37137311586). `tests` и `build` прошли, а deploy остановился на `Select existing kind cluster`: `could not locate any control plane nodes for cluster named 'credit-service-missing'`. Исправление env на `credit-service` вернуло доступ к существующему кластеру.
-
-7. **Неверный Ingress host.** [red 42ec761 / run 37137683401](https://github.com/harut-prog/credit-score/actions/runs/37137683401) → [green 3c78e59 / run 37137910217](https://github.com/harut-prog/credit-score/actions/runs/37137910217). Rollout был успешен, но smoke на `/health` получил `HTTP Error 404: Not Found`, потому что запрос шёл с Host `credit.localhost`, а правило временно слушало `wrong-credit.localhost`. Возврат host `credit.localhost` восстановил полный smoke, включая проверку записи в PostgreSQL.
-
 Для исправленных сценариев я сохранял отдельные коммиты: `f3ecaa2` — модель, `6eea4da` — Secret, `7124af6` — память. Первоначальную ошибочную попытку с request больше limit оставил в истории как диагностический шаг, а в отчёте основным ресурсным сценарием указал повтор run #19.
 
 # H3 — Домашка 3: MLOps
 
 ## Что запущено и как это проверено
 
-### Скриншоты HW3
-
-![MLflow Registry](docs/img/hw3/mlflow-registry.png)
-
-![Pods и Ingress](docs/img/hw3/cluster-pods-ingress.png)
-
-![HPA](docs/img/hw3/hpa-status.png)
-
-![Self-hosted runner credit-kind](docs/img/hw3/github-runner-credit-kind.png)
-
-Исторические события HPA подтверждены снимком ниже. На нём видны переходы с 2 на 4 и с 4 на 6 реплик.
-
-![История событий HPA](docs/img/hw3/hpa-events.png)
-
-Итог наблюдения за HPA — ниже: во время нагрузки число реплик выросло до 6, после остановки нагрузки вернулось к 2.
-
-![Повторный прогон HPA](docs/img/hw3/hpa30-rerun.png)
-
-Текстовый журнал находится в `report/hpa/hpa30-cluster.txt`, результаты Locust — в `report/hpa/hpa30_*.csv`.
-
 Кластер kind `credit-service` создан с пробросом localhost:80 на NodePort 30080. Traefik направляет `mlflow.localhost` в MLflow, а `credit.localhost` в API. На момент проверки в кластере были готовы MLflow, Traefik, metrics-server, PostgreSQL и две реплики API. HPA установлен с границами 2–6 и порогом 60% CPU. API загружает из Model Registry алиас `champion`, а `/health` сообщает фактическую версию и `run_id`.
 
-Проверка `scripts/smoke_hw3.py` через Ingress вернула `model_source=registry`, `model_version=3`, `score=0.4401357943582565`, `status_code=200`. Запрос с ID `e87965ad-b002-4592-a2b3-26f6225536ec` найден в PostgreSQL с теми же score и версией. Публичная сводка — [report/evidence.md](report/evidence.md).
+Проверка `scripts/smoke_hw3.py` через Ingress вернула `model_source=registry`, `model_version=3`, `score=0.4401357943582565`, `status_code=200`. Запрос с ID `e87965ad-b002-4592-a2b3-26f6225536ec` найден в PostgreSQL с теми же score и версией. Публичная сводка — [report/hw3/evidence.md](report/hw3/evidence.md); исходный ответ сохранён локально в `report/hw3/smoke-local.txt`.
 
 Локальная проверка кода: `ruff check .` прошла, fallback тесты дали 15 passed и 3 skipped без БД; после запуска Compose PostgreSQL три интеграционных теста `-m integrations` прошли. Они проверяют записи для статусов 200, 422 и 500.
 
 | Требование | Факт и доказательство |
 |---|---|
 | MLflow/Ingress | `mlflow.localhost` открывается в разделе Model training; Registry содержит `credit-score-logreg` версии 1–4. `kubectl get pods,ingress -A` и конфигурация — в `platform/` и `k8s/`. |
-| Три запуска и гейт | Логи `report/train/train{1,2,3}.txt`; [сводка](report/evidence.md). AP на одном validation split: 0.374676525 → 0.369516914 → 0.376070321. Версия 2 отклонена; `champion=3`. Сохраняются параметры, метрики, PR curve, metadata и `data_md5`. |
+| Три запуска и гейт | Локальные логи `report/hw3/train{1,2,3}-fixed.txt`; [сводка](report/hw3/evidence.md). AP на одном validation split: 0.374676525 → 0.369516914 → 0.376070321. Версия 2 отклонена; `champion=3`. Сохраняются параметры, метрики, PR curve, metadata и `data_md5`. |
 | Registry и API | `/health` показывает `champion=3`; smoke проверил версию, ответ и точную запись в БД. Loader валидирует состав признаков и threshold, ошибка Registry не маскируется fallback файлом. |
-| Git/DVC | V1: `cce525a1d41f234f58d3bb52f3d2516b` (150000 строк); V2: `d7123f735b51ec6675c136a2a944aa25` (149730 строк). [Трансформация](report/data-v2.txt), [DVC push](report/dvc-push-v2.txt), [проверка чистого клона](report/evidence.md), Git V2 `7d56f4e2fe269d88175d7d0e31c4f739edaf6fe4`. `dvc diff 9e2df3a 7d56f4e` показал один изменённый CSV. |
-| HPA и нагрузка | [Публичная таблица измерений](report/evidence.md). CSV и снимки HPA сохранены в [report/hpa](report/hpa). |
+| Git/DVC | V1: `cce525a1d41f234f58d3bb52f3d2516b` (150000 строк); V2: `d7123f735b51ec6675c136a2a944aa25` (149730 строк). [Трансформация](report/hw3/data-v2.txt), [DVC push](report/hw3/dvc-push-v2.txt), [проверка чистого клона](report/hw3/evidence.md), Git V2 `7d56f4e2fe269d88175d7d0e31c4f739edaf6fe4`. `dvc diff 9e2df3a 7d56f4e` показал один изменённый CSV. |
+| HPA и нагрузка | [Публичная таблица измерений](report/hw3/evidence.md). Исходные Locust CSV и снимки HPA сохранены локально в `report/hw3/`. |
 | Локальный runner и CI | Runner `credit-kind` зарегистрирован для `harut-prog/credit-score`, в сети Docker `kind`; из контейнера доступны `kind`, `kubectl` и узел `credit-service-control-plane`. Workflow применяет Secret, PVC, API и HPA, затем выполняет smoke через Ingress. |
 
 ## Обучение и выбор champion
@@ -241,7 +215,7 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 
 При 60 пользователях HPA оставался на максимуме 6 реплик. CPU был 561–1001m на Pod, память 193–199Mi, HPA — 1349%/60%. Locust выполнил 20120 запросов, из них три POST получили HTTP 502; суммарно 111.92 RPS, p95 POST 1400 мс. Рост RPS по сравнению с 30 пользователями сопровождается ростом задержки и ненулевой долей ошибок 3/20120 ≈ 0.015%. Это предел учебного однопроцессорного кластера/Ingress, а не гарантия отсутствия ошибок при масштабировании.
 
-После остановки 60 пользователей в 22:11:29 MSK HPA вернулся к двум репликам в 22:19:50 — через **8 мин 21 с**. Покадровый журнал — `report/hpa/hpa-scale-down.txt`. Внутри этого интервала я дважды перезапускал Deployment для проверки отката модели; HPA сообщил `ScaleDownStabilized` и краткие ошибки получения метрик от ещё не готовых Pod. Поэтому 8 мин 21 с — наблюдаемое время в этой последовательности, а не чистая оценка стандартного окна стабилизации HPA.
+После остановки 60 пользователей в 22:11:29 MSK HPA вернулся к двум репликам в 22:19:50 — через **8 мин 21 с**. Покадровый журнал — `report/hw3/hpa-scale-down.txt`. Внутри этого интервала я дважды перезапускал Deployment для проверки отката модели; HPA сообщил `ScaleDownStabilized` и краткие ошибки получения метрик от ещё не готовых Pod. Поэтому 8 мин 21 с — наблюдаемое время в этой последовательности, а не чистая оценка стандартного окна стабилизации HPA.
 
 | Пользователи | CPU request | Реплики | RPS всего | p95 POST | Ошибки |
 |---:|---:|---:|---:|---:|---:|
@@ -253,7 +227,7 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 
 1. `tests` и `build` выполняются на GitHub-hosted runner: им нужны исходники, зависимости и право публикации образа, но не локальный Kubernetes. `deploy` выполняется на self-hosted runner в Docker рядом с kind, поскольку кластер за домашним NAT и не имеет публичного API. Альтернативы — VPN/tunnel с контролем доступа или внешний кластер; открывать Kubernetes API в интернет ради домашней работы не нужно.
 
-2. Сеть Docker `kind` даёт runner доступ к адресу control-plane и Ingress из контейнера. Docker socket нужен для `kind export kubeconfig`, `docker pull` и `kind load docker-image`; группа `0` даёт непривилегированному пользователю runner доступ к этому сокету. Такой доступ практически эквивалентен управлению Docker-host, поэтому runner выделен только под доверенный репозиторий, а внешние PR должны требовать одобрения до исполнения на нём.
+2. Сеть Docker `kind` даёт runner доступ к адресу control-plane и Ingress из контейнера. Docker socket нужен для `kind export kubeconfig`, `docker pull` и `kind load docker-image`; группа `0` даёт непривилегированному пользователю runner доступ к этому socket. Такой доступ практически эквивалентен управлению Docker-host, поэтому runner выделен только под доверенный репозиторий, а внешние PR должны требовать одобрения до исполнения на нём.
 
 3. Workflow получает `DB_PASSWORD` из GitHub Secret только в окружение шага. `kubectl create secret --dry-run=client -o yaml | kubectl apply -f -` создаёт или обновляет один Kubernetes Secret повторяемо: dry-run готовит объект, apply отправляет его в кластер. Пароль не записывается в Git и не печатается в логах; Deployment и PostgreSQL получают его через `secretRef`/`secretKeyRef`.
 
@@ -261,7 +235,7 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 
 5. До первого обучения Registry ещё не содержит `champion`. Под с `MODEL_NAME` не может загрузить модель и не должен сообщать Ready; при таком порядке развёртывания CI завершится ошибкой rollout, а в логах будет ошибка поиска alias. Поэтому сначала запуск обучения и проверка champion в MLflow, затем API/runner. Состояние видно через `kubectl get pods` или k9s и шаг Diagnostics в GitHub Actions.
 
-6. Браузер обращается к localhost:80 с Host `mlflow.localhost`. Порт 80 проброшен при создании kind на NodePort 30080; Traefik Ingress выбирает `mlflow` Service по Host, Service ведёт на Pod:5000. Для API аналогично используется Host `credit.localhost`. В MLflow отдельно разрешены нужные host/origin настройки; одно лишь создание Ingress не исправляет отказ приложения из-за проверки Host/CORS.
+6. Браузер обращается к localhost:80 с Host `mlflow.localhost`. Порт 80 проброшен при **создании** kind на NodePort 30080; Traefik Ingress выбирает `mlflow` Service по Host, Service ведёт на Pod:5000. Для API аналогично используется Host `credit.localhost`. В MLflow отдельно разрешены нужные host/origin настройки; одно лишь создание Ingress не исправляет отказ приложения из-за проверки Host/CORS.
 
 7. HPA считает утилизацию как используемый CPU / `requests.cpu` и приблизительно рекомендует `ceil(текущие реплики × текущая утилизация / 60%)`, с ограничением 2–6. При 250m и малой нагрузке около 2% было недостаточно для роста; при 50m и 30 пользователях наблюдалось 1745%, поэтому целевое число упёрлось в максимум 6. Спад происходит с задержкой стабилизации HPA, а не сразу после остановки Locust; точное время зафиксировано отдельно ниже.
 
@@ -270,5 +244,5 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 ## Журнал проблем ДЗ 3
 
 - В первых трёх вызовах обучения загрузчик skops не доверял `numpy.dtype`; затем Windows cp1251 ломал печать ссылки MLflow, а системный proxy мешал `.localhost`. После исправлений три запуска завершились и дали решения гейта; старые логи оставлены для разбора ошибки, рабочие имеют суффикс `-fixed`.
-- При 30 пользователях во время роста реплик Ingress один раз вернул 502. Дальше сравниваю с прогоном 60 пользователей и проверяю, повторяется ли отказ.
+- При 30 пользователях во время роста реплик Ingress один раз вернул 502. Это не ошибка обучения; частота 0.0085%. Дальше сравниваю с прогоном 60 пользователей и проверяю, повторяется ли отказ.
 - Local DVC remote `C:\dvc-storage` подходит для соседнего клона на этом компьютере, но не переносится на другую машину без копирования storage или смены remote. Это явно указано в README.

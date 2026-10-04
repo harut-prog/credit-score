@@ -13,4 +13,3 @@ wheels/
 catboost_info/
 .pytest_cache
 .ruff_cache
-docs/pipeline
