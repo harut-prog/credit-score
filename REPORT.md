@@ -190,6 +190,18 @@ Workflow `.github/workflows/ci.yml` запускает `tests` для pull reque
 
 ## Что запущено и как это проверено
 
+### Скриншоты HW3
+
+![MLflow Registry](docs/img/hw3/mlflow-registry.png)
+
+![Pods и Ingress](docs/img/hw3/cluster-pods-ingress.png)
+
+![HPA](docs/img/hw3/hpa-status.png)
+
+![Self-hosted runner credit-kind](docs/img/hw3/github-runner-credit-kind.png)
+
+Отдельный исторический снимок `hpa-events` не сохранён: Kubernetes показывает только недавние события. События `SuccessfulRescale` 2 → 4 → 6 сохранены текстом в `report/hpa/hpa30-cluster.txt` и `report/hpa/hpa60-cluster.txt`, а CSV Locust находятся в `report/hpa/`.
+
 Кластер kind `credit-service` создан с пробросом localhost:80 на NodePort 30080. Traefik направляет `mlflow.localhost` в MLflow, а `credit.localhost` в API. На момент проверки в кластере были готовы MLflow, Traefik, metrics-server, PostgreSQL и две реплики API. HPA установлен с границами 2–6 и порогом 60% CPU. API загружает из Model Registry алиас `champion`, а `/health` сообщает фактическую версию и `run_id`.
 
 Проверка `scripts/smoke_hw3.py` через Ingress вернула `model_source=registry`, `model_version=3`, `score=0.4401357943582565`, `status_code=200`. Запрос с ID `e87965ad-b002-4592-a2b3-26f6225536ec` найден в PostgreSQL с теми же score и версией. Публичная сводка — [report/evidence.md](report/evidence.md).
