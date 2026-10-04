@@ -1,0 +1,14 @@
+NAME           REFERENCE                 TARGETS          MINPODS   MAXPODS   REPLICAS   AGE
+credit-score   Deployment/credit-score   cpu: 1341%/60%   2         6         6          23h
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES             SELECTOR
+credit-score   6/6     6            6           23h   api          credit-score:hw3   app=credit
+NAME                            CPU(cores)   MEMORY(bytes)   
+credit-score-7f596c6d56-hf4hs   646m         194Mi           
+credit-score-7f596c6d56-jhprb   542m         193Mi           
+credit-score-7f596c6d56-jrrxg   605m         196Mi           
+credit-score-7f596c6d56-ldmlf   610m         193Mi           
+credit-score-7f596c6d56-t97hn   1000m        200Mi           
+credit-score-7f596c6d56-wpnn8   653m         197Mi           
+LAST SEEN   TYPE     REASON              OBJECT                                 MESSAGE
+3m54s       Normal   SuccessfulRescale   horizontalpodautoscaler/credit-score   New size: 4; reason: cpu resource utilization (percentage of request) above target
+3m39s       Normal   SuccessfulRescale   horizontalpodautoscaler/credit-score   New size: 6; reason: cpu resource utilization (percentage of request) above target
