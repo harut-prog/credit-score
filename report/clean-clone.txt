@@ -1,4 +1,0 @@
-Clean clone: git clone --no-local --branch hw3 . _verify_hw3
-DVC remote override: C:/dvc-storage
-dvc pull: 1 file fetched and 1 file added
-MD5: D7123F735B51EC6675C136A2A944AA25
