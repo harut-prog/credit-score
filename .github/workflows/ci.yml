@@ -1,6 +1,6 @@
 name: ci
 on:
-  push: {branches: [master, hw3]}
+  push: {branches: [master, hw3, fix_hw2]}
   pull_request:
 
 jobs:
@@ -36,7 +36,7 @@ jobs:
 
   build:
     needs: tests
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hw3'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hw3' || github.ref == 'refs/heads/fix_hw2'
     runs-on: ubuntu-latest
 
     permissions: {contents: read, packages: write}
@@ -60,7 +60,7 @@ jobs:
 
   deploy:
     needs: build
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hw3'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hw3' || github.ref == 'refs/heads/fix_hw2'
     runs-on: [self-hosted, kind]
     timeout-minutes: 15
     concurrency:
