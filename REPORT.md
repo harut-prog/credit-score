@@ -160,7 +160,7 @@ kubectl port-forward svc/credit-score 8000:80
 - Ответ 1 содержит факт о семи `CACHED` слоях и сравнение с первой сборкой; ответы 3 и 7 дополнены объяснением открытости ConfigMap и порядка отказов.
 - `k8s/configmap.yaml` задаёт `LOG_LEVEL=DEBUG`, а `scripts/smoke_hw3.py` проверяет его через Ingress: дефолт `INFO` больше не маскирует отсутствие ConfigMap.
 - `tests/test_integration.py` проверяет сохранённые `features->>'age'` и `model_version` успешного запроса. Smoke также сверяет оба поля с отправленным запросом и ответом API.
-- Исправления выполняются в ветке `fix_hw2`; локально Ruff прошёл, pytest с отдельным PostgreSQL 17 завершился `18 passed` без skip (7 октября 2026). Ссылка на PR и Actions добавляется после публикации ветки.
+- Исправления выполняются в ветке `fix_hw2`; локально Ruff прошёл, pytest с отдельным PostgreSQL 17 завершился `18 passed` без skip (7 октября 2026). [PR #10](https://github.com/harut-prog/credit-score/pull/10), [полный прогон исправлений](https://github.com/harut-prog/credit-score/actions/runs/37667795585). Статус прогона проверяется по ссылке; deploy проверяет `DEBUG`, возраст и версию модели через Ingress и PostgreSQL.
 
 ## Семь вопросов
 
