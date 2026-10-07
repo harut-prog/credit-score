@@ -48,6 +48,7 @@ def main():
     health = request("/health", retries=20)
 
     assert health["state"] == "ok", health
+    assert health["log_level"] == "DEBUG", health
     assert health["model_source"] == "registry", health
     assert health["model_name"] == "credit-score-logreg", health
     assert str(health["model_version"]).isdigit(), health
@@ -63,7 +64,7 @@ def main():
 
     query = (
         "SELECT json_build_object('request_id',request_id,'score',score,"
-        "'model_version',model_version,'status_code',status_code) "
+        "'model_version',model_version,'status_code',status_code,'age',features->>'age') "
         f"FROM predictions WHERE request_id='{request_id}';"
     )
     row = None
@@ -83,6 +84,7 @@ def main():
     assert row["request_id"] == request_id, row
     assert row["status_code"] == 200, row
     assert row["model_version"] == result["model_version"], row
+    assert row["age"] == str(PAYLOAD["age"]), row
     assert math.isclose(row["score"], result["score"], rel_tol=1e-10, abs_tol=1e-12), row
     print(json.dumps({"health": health, "prediction": result, "db_row": row}, indent=2))
 
