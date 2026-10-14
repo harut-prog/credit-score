@@ -16,6 +16,10 @@ spec:
         - name: api
           image: credit-score:1.0
           imagePullPolicy: IfNotPresent
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
           ports:
             - containerPort: 8000
           envFrom:

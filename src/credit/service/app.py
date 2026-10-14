@@ -8,6 +8,8 @@ from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from prometheus_client import Counter, Gauge, Histogram
+from prometheus_fastapi_instrumentator import Instrumentator, metrics
 
 from credit import db
 from credit.config import settings
@@ -17,6 +19,23 @@ from credit.service.models import BatchFeatures, BatchPrediction, Features, Pred
 logger = logging.getLogger(__name__)
 logger.setLevel(settings.LOG_LEVEL)
 
+MODEL_INFO = Gauge(
+    "credit_model_info",
+    "Loaded model info",
+    ["model_version"],
+)
+
+SCORES = Histogram(
+    "credit_prediction_score",
+    "Distribution of predicted default probabilities",
+    buckets=(0.01, 0.03, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0),
+)
+
+PREDICTIONS = Counter(
+    "credit_predictions_total",
+    "Number of successful predictions",
+    ["result"],
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,6 +44,15 @@ async def lifespan(app: FastAPI):
     app.state.metadata = metadata
     app.state.model_identity = identity
     app.state.model_version = identity["model_version"]
+
+    MODEL_INFO.clear()
+    MODEL_INFO.labels(
+        model_version=app.state.model_version
+    ).set(1)
+
+    PREDICTIONS.labels(result="positive").inc(0)
+    PREDICTIONS.labels(result="negative").inc(0)
+
     app.state.db_enabled = bool(settings.database_url)
     if app.state.db_enabled:
         db.init()
@@ -33,6 +61,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Probability of a serious delay", version="1.1", lifespan=lifespan)
+
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    excluded_handlers=["/metrics", "/health", "/ready"]
+)
+instrumentator.add(metrics.requests())
+instrumentator.add(
+    metrics.latency(
+        buckets=(
+            0.005, 0.01, 0.015, 0.02, 0.03,
+            0.04, 0.05, 0.08, 0.1, 0.25, 0.5, 1,
+        )
+    )
+)
+instrumentator.instrument(app).expose(app)
 
 
 @app.get("/health")
@@ -115,6 +158,10 @@ def predict(X: Features, bg: BackgroundTasks):
         return JSONResponse(status_code=500, content={"detail": "inference failed", "request_id": request_id})
 
     arrear = score >= app.state.metadata["threshold_lr"]
+    SCORES.observe(score)
+    PREDICTIONS.labels(
+        result="positive" if arrear else "negative"
+    ).inc()
 
     return Prediction(
         request_id=request_id,
@@ -155,6 +202,11 @@ def predict_batch(X: BatchFeatures, bg: BackgroundTasks):
 
     threshold = app.state.metadata["threshold_lr"]
     arrear = [score >= threshold for score in scores]
+    for score, positive in zip(scores, arrear):
+        SCORES.observe(score)
+        PREDICTIONS.labels(
+            result="positive" if positive else "negative"
+        ).inc()
 
     return BatchPrediction(
         request_ids=request_ids,

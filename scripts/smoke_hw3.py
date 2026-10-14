@@ -86,6 +86,11 @@ def main():
     assert row["model_version"] == result["model_version"], row
     assert row["age"] == str(PAYLOAD["age"]), row
     assert math.isclose(row["score"], result["score"], rel_tol=1e-10, abs_tol=1e-12), row
+    metrics_req = urllib.request.Request(BASE + "/metrics", headers={"Host": HOST})
+    with urllib.request.urlopen(metrics_req, timeout=30) as metrics_response:
+        metrics_text = metrics_response.read().decode("utf-8")
+    version_metric = f'credit_model_info{{model_version="{health["model_version"]}"}} 1.0'
+    assert version_metric in metrics_text, "Model version metric missing or stale"
     print(json.dumps({"health": health, "prediction": result, "db_row": row}, indent=2))
 
 

@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,6 @@ import matplotlib.pyplot as plt
 import mlflow
 import mlflow.sklearn
 import numpy as np
-import pandas as pd
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
 from mlflow.models import infer_signature
@@ -21,21 +21,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, precision_recall_curve, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import QuantileTransformer, StandardScaler
+
+from credit.data import load_clean, load_raw
 
 matplotlib.use("Agg")
 
-RENAME = {
-    "RevolvingUtilizationOfUnsecuredLines": "unsecured_lines",
-    "NumberOfTime30-59DaysPastDueNotWorse": "past_30_59",
-    "DebtRatio": "debt_ratio",
-    "MonthlyIncome": "monthly_income",
-    "NumberOfOpenCreditLinesAndLoans": "credit_lines",
-    "NumberOfTimes90DaysLate": "past_90",
-    "NumberRealEstateLoansOrLines": "real_estate",
-    "NumberOfTime60-89DaysPastDueNotWorse": "past_60_89",
-    "NumberOfDependents": "dependents",
-}
 FEATURES = [
     "unsecured_lines", "age", "past_30_59", "debt_ratio", "monthly_income",
     "credit_lines", "past_90", "real_estate", "past_60_89", "dependents",
@@ -43,9 +34,10 @@ FEATURES = [
 MODEL_NAME = "credit-score-logreg"
 
 
-def make_pipeline(c, class_weight):
-    other = [f for f in FEATURES if f not in {"monthly_income", "dependents"}]
-    preprocess = ColumnTransformer([
+def make_pipeline(c, class_weight, feature_set="baseline"):
+    tail = ["unsecured_lines", "debt_ratio"] if feature_set == "quantile" else []
+    other = [f for f in FEATURES if f not in {"monthly_income", "dependents", *tail}]
+    transformers = [
         ("income", Pipeline([
             ("impute", SimpleImputer(strategy="median", add_indicator=True)),
             ("scale", StandardScaler()),
@@ -54,8 +46,11 @@ def make_pipeline(c, class_weight):
             ("impute", SimpleImputer(strategy="median")),
             ("scale", StandardScaler()),
         ]), ["dependents"]),
-        ("other", StandardScaler(), other),
-    ])
+    ]
+    if tail:
+        transformers.append(("tail", QuantileTransformer(n_quantiles=1000, output_distribution="normal", random_state=42), tail))
+    transformers.append(("other", StandardScaler(), other))
+    preprocess = ColumnTransformer(transformers)
 
     return Pipeline([
         ("preprocess", preprocess),
@@ -67,17 +62,9 @@ def make_pipeline(c, class_weight):
 
 
 def load_splits(path, seed):
-    raw = pd.read_csv(path, index_col=0).rename(columns=RENAME)
-    invalid = (
-        raw["past_30_59"].isin([96, 98])
-        | raw["past_60_89"].isin([96, 98])
-        | raw["past_90"].isin([96, 98])
-        | (raw["age"] == 0)
-    )
-    removed = int(invalid.sum())
-    clean = raw.loc[~invalid].copy()
-    assert not clean[["past_30_59", "past_60_89", "past_90"]].isin([96, 98]).any().any()
-    assert not clean["age"].eq(0).any()
+    raw = load_raw(path)
+    clean = load_clean(path)
+    removed = len(raw) - len(clean)
 
     x, y = clean[FEATURES], clean["SeriousDlqin2yrs"]
     xt, x_test, yt, y_test = train_test_split(
@@ -88,7 +75,8 @@ def load_splits(path, seed):
     )
     evaluation = x_val.copy()
     evaluation["target"] = y_val
-    evaluation_md5 = hashlib.md5(evaluation.to_csv().encode("utf-8")).hexdigest()
+    # Keep the same holdout fingerprint on Windows and Linux (HW3 used CRLF).
+    evaluation_md5 = hashlib.md5(evaluation.to_csv(lineterminator="\r\n").encode("utf-8")).hexdigest()
     print(f"raw={len(raw)} removed={removed} clean={len(clean)}")
     print(f"train={len(x_train)} val={len(x_val)} test={len(x_test)}")
     return x_train, x_val, x_test, y_train, y_val, y_test, removed, evaluation_md5
@@ -105,6 +93,7 @@ def main():
     parser.add_argument("--data", type=Path, default=Path("data/credit_score.csv"))
     parser.add_argument("--c", type=float, default=1.0)
     parser.add_argument("--class-weight", choices=["none", "balanced"], default="none")
+    parser.add_argument("--feature-set", choices=["baseline", "quantile"], default="baseline")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--min-gain", type=float, default=0.001)
     args = parser.parse_args()
@@ -112,11 +101,15 @@ def main():
         parser.error("c must be positive and min-gain nonnegative")
 
     data_md5 = hashlib.md5(args.data.read_bytes()).hexdigest()
-    git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    git_sha = os.environ.get("BUILD_GIT_SHA")
+    if not git_sha:
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True
+        ).strip()
 
     splits = load_splits(args.data, args.seed)
     x_train, x_val, x_test, y_train, y_val, y_test, removed, evaluation_md5 = splits
-    pipeline = make_pipeline(args.c, args.class_weight)
+    pipeline = make_pipeline(args.c, args.class_weight, args.feature_set)
     pipeline.fit(x_train, y_train)
     val_proba = pipeline.predict_proba(x_val)[:, 1]
     test_proba = pipeline.predict_proba(x_test)[:, 1]
@@ -130,7 +123,7 @@ def main():
         "model_name": MODEL_NAME, "features": FEATURES, "threshold_lr": threshold,
         "data_md5": data_md5, "git_sha": git_sha, "seed": args.seed,
         "evaluation_md5": evaluation_md5, "algorithm": "LogisticRegression",
-        "parameters": {"C": args.c, "class_weight": args.class_weight},
+        "parameters": {"C": args.c, "class_weight": args.class_weight, "feature_set": args.feature_set},
         "removed_invalid_rows": removed,
         "n_train": len(x_train), "n_validation": len(x_val), "n_test": len(x_test),
         "metrics_validation": {"average_precision": val_ap},
@@ -160,9 +153,10 @@ def main():
         old = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/{champion.version}")
         champion_ap = float(average_precision_score(y_val, old.predict_proba(x_val)[:, 1]))
 
-    with mlflow.start_run(run_name=f"C={args.c};weight={args.class_weight}") as run:
+    with mlflow.start_run(run_name=f"C={args.c};weight={args.class_weight};features={args.feature_set}") as run:
         mlflow.log_params({
             "C": args.c, "class_weight": args.class_weight, "seed": args.seed,
+            "feature_set": args.feature_set,
             "MIN_GAIN": args.min_gain, "data_md5": data_md5,
             "git_sha": git_sha, "evaluation_md5": evaluation_md5,
         })
@@ -202,11 +196,16 @@ def main():
         if champion_ap is not None:
             mlflow.log_metric("champion_val_average_precision", champion_ap)
 
-        print(json.dumps({
+        result = {
             "run_id": run.info.run_id, "version": version, "data_md5": data_md5,
             "candidate_ap": val_ap, "champion_ap": champion_ap,
             "MIN_GAIN": args.min_gain, "promoted": bool(promoted),
-        }))
+        }
+        xcom_path = os.environ.get("AIRFLOW_XCOM_PATH")
+        if xcom_path:
+            Path(xcom_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(xcom_path).write_text(json.dumps(result), encoding="utf-8")
+        print(json.dumps(result))
 
 
 if __name__ == "__main__":

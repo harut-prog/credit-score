@@ -188,7 +188,7 @@ kubectl port-forward svc/credit-score 8000:80
 
 4. **Недоступная память (runs #19 → #20).** Первая попытка с огромным `requests.memory` при `limits.memory: 1Gi` была отклонена Kubernetes API ещё при `kubectl apply`, потому что request превышал limit. Для повторной симуляции я сделал request и limit одинаково большими: манифест применился, rollout завершился таймаутом, а диагностика подтвердила Pod `Pending` и `FailedScheduling` с причиной `Insufficient memory`. Затем вернул `requests.memory: 512Mi` и `limits.memory: 1Gi`; run #20 прошёл все три job.
 
-5. **Контролируемые red/green deploy в HW3.** Все шесть запусков сделаны отдельными последовательными коммитами только в ветке `hw3` по правилу пользователя. Базовый green: [bea7735 / run 37053723403](https://github.com/harut-prog/credit-score/actions/runs/37053723403). Неверный Registry alias: [red 08ebda0 / run 37054105773](https://github.com/harut-prog/credit-score/actions/runs/37054105773) → [green fb3a465 / run 37054829281](https://github.com/harut-prog/credit-score/actions/runs/37054829281). Pod ушёл в `CrashLoopBackOff`, лог MLflow сообщил `Registered model alias no-such-alias not found`; возврат `champion` восстановил rollout.
+5. **Контролируемые deploy в HW3.** Базовый green: [bea7735 / run 37053723403](https://github.com/harut-prog/credit-score/actions/runs/37053723403). Неверный Registry alias: [red 08ebda0 / run 37054105773](https://github.com/harut-prog/credit-score/actions/runs/37054105773) → [fb3a465 / run 37054829281](https://github.com/harut-prog/credit-score/actions/runs/37054829281). Во втором прогоне `tests` и `build` прошли, но **deploy остался красным: упал smoke**. Лог MLflow при первом отказе сообщил `Registered model alias no-such-alias not found`; возврат `champion` исправил alias, но не сделал весь run зелёным. Полный успешный deploy позже подтверждён [run 37137311586](https://github.com/harut-prog/credit-score/actions/runs/37137311586).
 
 6. **Неверное имя kind-кластера.** [red 5023388 / run 37055871329](https://github.com/harut-prog/credit-score/actions/runs/37055871329) → [green eaa2ba0 / run 37137311586](https://github.com/harut-prog/credit-score/actions/runs/37137311586). `tests` и `build` прошли, а deploy остановился на `Select existing kind cluster`: `could not locate any control plane nodes for cluster named 'credit-service-missing'`. Исправление env на `credit-service` вернуло доступ к существующему кластеру.
 
@@ -282,3 +282,88 @@ kubectl port-forward svc/credit-score 8000:80
 - В первых трёх вызовах обучения загрузчик skops не доверял `numpy.dtype`; затем Windows cp1251 ломал печать ссылки MLflow, а системный proxy мешал `.localhost`. После исправлений три запуска завершились и дали решения гейта; старые логи оставлены для разбора ошибки, рабочие имеют суффикс `-fixed`.
 - При 30 пользователях во время роста реплик Ingress один раз вернул 502. Дальше сравниваю с прогоном 60 пользователей и проверяю, повторяется ли отказ.
 - Local DVC remote `C:\dvc-storage` подходит для соседнего клона на этом компьютере, но не переносится на другую машину без копирования storage или смены remote. Это явно указано в README.
+
+# H4 — Итоговый проект (работа в ветке `hw4`)
+
+## Состояние и границы доказательств
+
+Работа собрана на базе HW3, без новых коммитов по просьбе владельца. Поэтому для новых файлов HW4 **нет ссылок на коммиты и зелёного GitHub Actions run**: приписывать им HEAD `0f6566e` было бы неверно. После коммита владельца и push эти ссылки нужно вставить по фактическому SHA и проверить через GitHub API. Старые ссылки на 17 Actions run из разделов HW2/HW3 проверены по GitHub API 13 октября; найдено и исправлено одно неверное слово «green» у `37054829281` — run завершился `failure` на smoke.
+
+```mermaid
+flowchart LR
+  Git[Git: код, DAG, YAML, .dvc] --> CI[GitHub Actions]
+  CI --> GHCR[GHCR: API/обучение]
+  CI --> Kind[kind: API и PostgreSQL]
+  CI --> Airflow[Airflow в mlops]
+  CSV[Give Me Some Credit] --> DVC[DVC pointer + RustFS S3]
+  Airflow -->|validate и train в отдельных Pods| DVC
+  Airflow --> MLflow[MLflow: runs и Model Registry]
+  Kind -->|загружает champion| MLflow
+  Kind -->|/metrics| Prom[Prometheus]
+  Prom --> Grafana[Grafana]
+  Kind --> PG[(PostgreSQL: предсказания)]
+```
+
+| Объект | Где хранится | Как найти версию |
+|---|---|---|
+| Код, DAG, манифесты | GitHub / Git | полный commit SHA; незакоммиченные изменения HW4 пока не имеют SHA |
+| CSV | RustFS, бакет `dvc`, объект DVC | `data/credit_score.csv.dvc` в Git, `data_md5` в MLflow |
+| Модель и метаданные | MLflow Model Registry и артефакты run | `credit-score-logreg` + version/alias, `run_id`, `metadata.json` |
+| Образ | GHCR после CI; локально `credit-score:hw4` для проверки | тег `sha-<полный SHA>` после коммита |
+| Логи запросов | таблица `predictions` PostgreSQL | `request_id`, `model_version`, время, статус |
+| Метрики | Prometheus (retention 2d) | имя метрики и labels `service`, `pod`, `model_version` |
+
+## Пункт задания → доказательство
+
+| Пункт | Файл / проверка | Состояние 13.10 |
+|---|---|---|
+| Платформа одной командой | `platform/up.sh`, `platform/airflow.yaml`, `platform/s3.yaml`, `platform/monitoring-values.yaml`; `kubectl get pods -A` показал Running для API, PostgreSQL, Airflow, MLflow, RustFS, Prometheus, Grafana | работает в существующем kind; полный замер чистого clone/cluster ещё нужен |
+| DVC и S3 | `.dvc/config`, `scripts/bootstrap_data.py`, `.dockerignore`, Dockerfile; `dvc push -r laptop` через port-forward; SHA256 источника и MD5 результата сверены | корректный и временно испорченный объекты загружены в бакет. 14 октября основной Dockerfile собран в `credit-score:hw4-clean`; проверено, что внутри есть `.dvc`-указатель и нет CSV, модули API и обучения импортируются. |
+| Pandera | `src/credit/data.py`, `tests/test_data.py`; локальный запуск `22 passed` с PostgreSQL; [зелёный validate](http://mlflow.localhost/#/experiments/2/runs/b08365ed55df421692c01a9addcebc30), [красный validate](http://mlflow.localhost/#/experiments/2/runs/ed652f925d614e259a2a5b87f6d85e3e) | у красного run `FAILED`, `valid=false`, артефакт `failure_cases.csv`, код 1; зелёный run: 149730 строк |
+| Метрики и Grafana | `src/credit/service/app.py`, `platform/service-monitor.yaml`, `platform/dashboard.yaml`, `scripts/traffic.py`, `k8s/deployment.yaml`; [Prometheus up](report/hw4/prometheus-up.json), [версии по Pod](report/hw4/model-version-by-pod.json), [трафик при rollout](report/hw4/promotion-traffic.txt) | Prometheus `up=1`, метрика `credit_model_info{model_version="6"}` на шести Pod; [dashboard](http://grafana.localhost/d/credit-hw4/credit-score-service) отдан Grafana API; при переключении 484 запроса, 0 ошибок, версии 3 и 6. Скриншот dashboard пока отсутствует. |
+| Airflow | `dags/credit_retrain.py`; [все прогоны](report/hw4/dag-runs.json), [отказ гейта](report/hw4/rejected-run-tasks.json), [promotion](report/hw4/promoted-run-tasks.json), [неверные данные](report/hw4/bad-data-run-tasks.json), [восстановление](report/hw4/recovered-run-tasks.json) | четыре проверочных DAG run: гейт отклонил challenger, улучшенная модель стала champion v6 и вызвала rollout, плохие данные остановили validate, после восстановления DAG снова зелёный |
+| CI/CD | `.github/workflows/ci.yml`: tests → build → deploy; публикация DAG, dashboard и переменных; smoke проверяет Registry, ответ, PostgreSQL и `credit_model_info`; [локальный smoke полного образа](report/hw4/clean-image-smoke.json) | основной образ успешно развернут в kind 14 октября, smoke через Ingress сверил champion v6, запрос, строку PostgreSQL и метрику. Существующий self-hosted runner перезапущен и сообщил `Listening for Jobs`; после коммита и push всё ещё нужен GitHub Actions run на `hw4` |
+| Quickstart | `README.md`: clone, платформа, восстановление исходного DVC CSV, push, champion, образ, API, Ingress, DAG | написан, полный тест в свежем clone и кластере ещё не проводился |
+
+**Пороговые значения схемы.** После очистки в исходной версии 149730 строк, доля просрочки 6.598%, медиана `monthly_income` 5400. Ограничения `EXPORT` — не меньше 140000 строк, 5–8% просрочки и медиана дохода 4000–7000: допускают умеренное изменение выгрузки и ловят обрезанный или существенно смещённый файл. Возраст 18–120 согласован с Pydantic API; 13 исходных клиентов старше 100 остаются в обучении. `96`/`98` в трёх счётчиках просрочек и возраст 0 удаляются перед проверкой.
+
+**Buckets задержки.** В прежнем замере для `/v1/predict` у 10 пользователей медиана была 19 мс, p95 — 49 мс (`report/locust/run10_stats.csv`). Поэтому histogram API чаще разбит около 15–50 мс: 5, 10, 15, 20, 30, 40, 50, 80, 100, 250, 500 и 1000 мс. Уникальные `request_id` и значения признаков в labels отсутствуют.
+
+## Сценарии переобучения
+
+`credit_retrain` выполняет `validate → train → promoted → rollout`. Validate и train — разные Kubernetes Pods из образа API; каждый сначала делает `dvc pull -r cluster`. `train` записывает JSON решения гейта в `/airflow/xcom/return.json`; `promoted` проверяет поле `promoted`, а rollout перезапускает `deployment/credit-score` только после истинного решения. Оба образа для локальной проверки собраны поверх заранее закешированного `credit-score:hw4` с актуальными `src` и DVC-указателем; исходный CSV в образ не копировался. У этих проверочных образов нет Git SHA коммита.
+
+| Сценарий | DAG run UTC | Результат |
+|---|---|---|
+| Гейт отклоняет | `manual__2026-10-13T17:22:56.010946+00:00` | `validate`, `train`, `promoted` успешны, `rollout` пропущен. Challenger v5, run `5fae35e740574cb3a9c61e50ef4adae2`: AP 0.3695169 против champion v3 AP 0.3760703. |
+| Модель лучше | `manual__2026-10-13T17:29:54.948615+00:00` | Все четыре задачи успешны. Вариант `quantile` дал AP 0.3977666609404553 против 0.3760703210620944; champion v3 → v6, run `82b8b8495cc14da9b0fcec79af70cae2`. `kubectl rollout status` успешен, `/health` вернул v6. За 120 с трафика: 484 запроса, 0 ошибок, 437 ответов v3 и 47 v6; Prometheus затем увидел v6 на шести Pod. |
+| Данные испорчены | `manual__2026-10-13T17:38:09.849538+00:00` | В первой строке age 45 → 121, DVC MD5 `d7dd0989a975e8fade620adf89d6a549`, объект загружен в RustFS, отдельный проверочный образ содержит его указатель. `validate=failed`, три следующие задачи `upstream_failed`, DAG красный. MLflow validate run [602e038072c645849406b1ebcc796e66](http://mlflow.localhost/#/experiments/2/runs/602e038072c645849406b1ebcc796e66) имеет `FAILED`, `valid=false` и артефакт `failure_cases.csv`; API продолжил отдавать champion v6. |
+| Восстановление | `manual__2026-10-13T17:40:20.097969+00:00` | Исходный CSV и указатель MD5 `d7123f735b51ec6675c136a2a944aa25` возвращены, Airflow снова использует рабочий образ. Validate/train прошли, гейт отклонил нового challenger, rollout пропущен; DAG успешен, champion v6 сохранён. |
+
+Временная испорченная версия была проверена в локальном кластере без Git-коммитов. Формальные отдельный коммит с плохим DVC-указателем и revert из задания остаются невыполненными по просьбе владельца **не создавать коммиты без него**; фиктивных ссылок на них нет.
+
+## Журнал проблем HW4
+
+1. `dvc push -r laptop` через `s3.localhost` вернул `503 Service Unavailable` на `HeadObject`. RustFS Pod и Service были Running, а прямой `kubectl port-forward svc/rustfs 9000:9000` и временный endpoint `http://127.0.0.1:9000` дали `Everything is up to date`; локальная конфигурация затем восстановлена. В Quickstart закреплён port-forward, чтобы не зависеть от DNS/Ingress Windows.
+2. Первое локальное выполнение красного validate дошло до Pandera, но Windows-консоль cp1251 не смогла напечатать emoji MLflow и получила `UnicodeEncodeError`. В `data.main()` выставлен UTF-8 для stdout/stderr, как уже сделано в обучении; повтор дал код 1, `valid=false`, `FAILED` и CSV ошибок.
+3. Первый прогон интеграционных тестов через port-forward Postgres попал в локальную БД `predictions` из `.env`, которой нет в kind. Явно указал `POSTGRES_DB=credit`; повтор закончился `22 passed` без skip.
+4. В историческом отчёте HW3 прогон `37054829281` был обозначен зелёным. GitHub API подтвердил `tests=success`, `build=success`, `deploy=failure` на smoke; формулировка исправлена.
+5. Первая сборка полного Dockerfile долго скачивала зависимости, повторная остановилась на TLS timeout при обращении к внешнему registry. Для сценариев DAG 13 октября использован локальный проверочный образ на основе существующего `credit-score:hw4`; он получил актуальный код и DVC-указатель. 14 октября повтор основного Dockerfile завершился успешно: получен `credit-score:hw4-clean`, проверены отсутствие CSV, импорт модулей и работа в kind. Smoke через Ingress проверил модель v6, PostgreSQL и `credit_model_info`; отдельный прогон CI пока невозможен без коммита и push.
+6. Первый DAG run после установки образа прошёл validate, но train обнаружил расхождение `evaluation_md5`: прежний champion был обучен на CSV с CRLF, а Linux Pod записал LF. В train задан стабильный `lineterminator="\r\n"`, проверен тот же MD5 `bf753e9d2d1473ab8a76de18b7fa0aec`; последующие run выполнили гейт и rollout.
+7. Скриншот Grafana не получен: средство автоматизации браузера остановилось на проверке текущего URL. Наличие dashboard подтверждено ответом Grafana API и метриками Prometheus, но требование задания о скриншоте остаётся открытым.
+8. Перед будущим CI проверил локальный контейнер `gh-runner`: он находился в состоянии `Exited (255)` пять дней. Запустил существующий контейнер и `run.sh`; диагностический лог 14 октября показал `Session created` и `Listening for Jobs`. Новая регистрация runner не потребовалась.
+
+## Восемь вопросов ДЗ 4
+
+1. В Model Registry беру version N и её `run_id`, затем у run читаю `git_sha`, `data_md5` и `evaluation_md5` из параметров и `metadata.json`. По `git_sha` восстанавливаю код и `.dvc`-указатель, делаю `dvc pull -r laptop` или `cluster`, сверяю MD5 с `data_md5`; без сохранённого объекта в S3 один указатель недостаточен. Для незакоммиченной локальной сборки `uncommitted-hw4` этот путь пока неприменим, поэтому она не предъявляется как воспроизводимая версия.
+2. Образ содержит код и DVC-указатель, чтобы каждый обучающий Pod подтягивал конкретную версию из S3; 7.5 МБ CSV не копируются в каждый образ. Если отправить Git-указатель раньше `dvc push`, новый Pod упадёт на `dvc pull` из-за отсутствующего объекта, это видно в логах задачи Airflow.
+3. Бинарные проверки — типы, возраст, допустимые значения просрочки/таргета, неотрицательность и уникальность ID. Пороговые — минимум 140000 строк, доля класса 5–8%, медиана дохода 4000–7000. Пороги взяты вокруг наблюдаемых 149730, 6.598% и 5400; слишком строгий порог остановит нормальное обновление данных до обучения.
+4. Pandera проверяет весь обучающий CSV, в том числе ID и статистику выгрузки, до train. Pydantic проверяет один входящий запрос API и не знает ни размера датасета, ни истинного класса. Обе схемы используют один смысловой возраст 18–120 и поля модели, но работают в разных местах.
+5. Airflow планирует и наблюдает задачи, а тяжёлая подготовка данных и sklearn запускаются в отдельных Pods с заданным образом, ресурсами и секретами S3. API уже умеет загрузить `champion` из Registry при старте; после смены alias rollout создаёт Pods с тем же образом и новой версией модели, без пересборки.
+6. Инфраструктурные метрики — `up`, состояние Pods и ресурсы Kubernetes; сервисные — RPS, HTTP-статусы, p50/p95. Модельные — `credit_model_info`, histogram score и доля положительных решений. `request_id` уникален для каждого запроса: label с ним породил бы новую временную серию на каждый запрос и перегрузил Prometheus.
+7. При rollout Kubernetes запускает новый Pod, дожидается readiness и убирает старый из Service. `preStop` задерживает завершение старого контейнера на 10 секунд, чтобы завершились запросы, которые уже шли через Ingress. В прежнем HW3 под нагрузкой наблюдались единичные 502 во время масштабирования, но их нельзя однозначно приписать отсутствию `preStop`; для HW4 нужен отдельный длительный замер именно при rollout.
+8. Наиболее вероятен отказ доступа к S3: `dvc pull` не найдёт объект или получит 503, поэтому `validate`/`train` красные, а работающий API остаётся на прежнем champion. Это видно в логах Airflow при следующем ручном или ежедневном запуске; первым делом проверю RustFS Pod, бакет, ключи Secret и доступ к endpoint из обучающего Pod, не переключая alias вручную.
+
+## Переделки по прошлым заданиям
+
+Фидбек HW2 по ссылкам, ответам 1/3/7, ConfigMap и строке PostgreSQL закрыт ранее. Для точной привязки проверены GitHub commits [d6d638ae53570b31c96601163dd7bf02e8589a17](https://github.com/harut-prog/credit-score/commit/d6d638ae53570b31c96601163dd7bf02e8589a17) и [228d30a297d2c66deb9fddc3fffdda252e1313ec](https://github.com/harut-prog/credit-score/commit/228d30a297d2c66deb9fddc3fffdda252e1313ec), а также [успешный Actions run 37667795585](https://github.com/harut-prog/credit-score/actions/runs/37667795585). Изменения HW4 пока не имеют commit URL по прямому требованию владельца.

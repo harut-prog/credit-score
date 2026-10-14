@@ -1,7 +1,8 @@
 name: ci
 on:
-  push: {branches: [master, hw3, fix_hw2]}
+  push: {branches: [master, hw4]}
   pull_request:
+  workflow_dispatch:
 
 jobs:
   tests:
@@ -36,7 +37,7 @@ jobs:
 
   build:
     needs: tests
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hw3' || github.ref == 'refs/heads/fix_hw2'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hw4'
     runs-on: ubuntu-latest
 
     permissions: {contents: read, packages: write}
@@ -53,6 +54,8 @@ jobs:
       - uses: docker/build-push-action@v7.4.0
         with:
           context: .
+          build-args: |
+            BUILD_GIT_SHA=${{ github.sha }}
           push: true
           tags: ${{ env.IMAGE }}
           cache-from: type=gha
@@ -60,7 +63,7 @@ jobs:
 
   deploy:
     needs: build
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hw3' || github.ref == 'refs/heads/fix_hw2'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hw4'
     runs-on: [self-hosted, kind]
     timeout-minutes: 15
     concurrency:
@@ -79,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Runner name: $RUNNER_NAME"
-          export KUBECONFIG="$RUNNER_TEMP/hw3-kubeconfig"
+          export KUBECONFIG="$RUNNER_TEMP/hw4-kubeconfig"
           rm -f "$KUBECONFIG"
           kind export kubeconfig --name "$KIND_CLUSTER" --internal
           kubectl get nodes
@@ -124,6 +127,20 @@ jobs:
           kubectl apply -f k8s/hpa.yaml
           kubectl rollout restart deploy/credit-score
           kubectl rollout status deploy/credit-score --timeout=180s
+      - name: Deploy monitoring and DAG
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f platform/service-monitor.yaml
+          kubectl apply -f platform/dashboard.yaml
+          kubectl -n mlops rollout status deploy/airflow --timeout=180s
+          kubectl -n mlops create configmap airflow-dags --from-file=dags/ \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n mlops exec deploy/airflow -- airflow variables set credit_image "$IMAGE"
+          kubectl -n mlops exec deploy/airflow -- airflow variables set credit_c 1.0
+          kubectl -n mlops exec deploy/airflow -- airflow variables set credit_class_weight balanced
+          kubectl -n mlops exec deploy/airflow -- airflow variables set credit_feature_set quantile
+          kubectl -n mlops exec deploy/airflow -- airflow variables set credit_min_gain 0.001
       - name: Smoke through Ingress and exact DB request
         shell: bash
         run: |

@@ -5,7 +5,7 @@ class Features(BaseModel):
     model_config = {"extra": "forbid"}
 
     unsecured_lines: float = Field(..., ge=0)
-    age: int = Field(..., ge=18, le=100)
+    age: int = Field(..., ge=18, le=120)
     past_30_59: int = Field(..., ge=0, le=95)
     past_90: int = Field(..., ge=0, le=95)
     past_60_89: int = Field(..., ge=0, le=95)
