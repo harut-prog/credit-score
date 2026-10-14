@@ -1,0 +1,31 @@
+{
+  "id": 38561571900,
+  "html_url": "https://github.com/harut-prog/credit-score/actions/runs/38561571900",
+  "head_sha": "18055945772d546a44cfd619e32c3b65d66c7740",
+  "head_branch": "hw4",
+  "status": "completed",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "id": 115843656274,
+      "name": "tests",
+      "status": "completed",
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000138"
+    },
+    {
+      "id": 115843898999,
+      "name": "build",
+      "status": "completed",
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000139"
+    },
+    {
+      "id": 115844657508,
+      "name": "deploy",
+      "status": "completed",
+      "conclusion": "success",
+      "runner_name": "credit-kind"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "run_id": "e14e65169c964660a3e5e708a0cc02f1",
+  "status": "FAILED",
+  "valid": "false",
+  "artifacts": [
+    "failure_cases.csv"
+  ]
+}
