@@ -65,7 +65,7 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hw4'
     runs-on: [self-hosted, kind]
-    timeout-minutes: 15
+    timeout-minutes: 30
     concurrency:
       group: credit-kind-deploy
       cancel-in-progress: false
