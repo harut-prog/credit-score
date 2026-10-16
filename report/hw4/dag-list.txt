@@ -1,0 +1,3 @@
+dag_id         | fileloc                                    | owners  | is_paused | bundle_name | bundle_version
+===============+============================================+=========+===========+=============+===============
+credit_retrain | /opt/airflow/dags/..data/credit_retrain.py | airflow | True      | dags-folder | None

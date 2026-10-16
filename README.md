@@ -1,57 +1,104 @@
-# Кредитный скоринг — Give Me Some Credit
+# Credit score: Give Me Some Credit
 
-Сервис оценивает вероятность серьёзной просрочки по данным заёмщика. Рабочая модель — логистическая регрессия; `/v1/predict` принимает одну запись, `/v1/predict/batch` — до 1000 записей. История ДЗ 1 и ДЗ 2, включая нагрузочные замеры, находится в [REPORT.md](REPORT.md).
+Сервис оценивает вероятность серьёзной просрочки на основе десяти признаков заёмщика. Логистическая регрессия обучается по версионированному CSV, проходит сравнение с текущим champion в MLflow и обслуживает одиночные и пакетные запросы. История ДЗ 1–4 и доказательства находятся в [REPORT.md](REPORT.md).
 
-## Быстрый запуск после клонирования
+## Quickstart: чистый Windows-компьютер и kind
 
-Нужны Docker и Docker Compose. Файл `.env` создавать не требуется: для локального запуска заданы пользователь `postgres`, пароль `postgres` и база `credit`. Эти значения предназначены только для локальной разработки.
+Нужны Git (с Git Bash), Docker Desktop, Python 3.11, [uv](https://docs.astral.sh/uv/), [kind](https://kind.sigs.k8s.io/), kubectl и Helm. Docker Desktop должен быть запущен. Команды ниже — PowerShell; две команды `port-forward` держите в отдельных окнах. Дефолтные пароли ниже учебные, только для локального kind.
 
-```bash
-docker compose up -d --build
-docker compose ps
-curl http://localhost:8080/ready
+```powershell
+git clone -b hw4 https://github.com/harut-prog/credit-score.git
+cd credit-score
+uv sync --frozen
+& 'C:\Program Files\Git\bin\bash.exe' platform/up.sh
+kubectl get pods -A
 ```
 
-После запуска `/ready` возвращает `{"state":"ready"}`. Swagger доступен по адресу http://localhost:8080/docs. Пример запроса:
+`platform/up.sh` создаёт kind, MLflow, Airflow, RustFS с бакетом `dvc`, Prometheus и Grafana. На свежей машине бакет пуст. Скрипт ниже скачает публичный оригинал Give Me Some Credit, проверит SHA256, удалит ровно 270 строк со специальными кодами просрочки или нулевым возрастом и подтвердит MD5 DVC-версии. При несовпадении скрипт остановится; данные не придётся подбирать вручную.
 
-```bash
-curl -X POST http://localhost:8080/v1/predict \
-  -H "Content-Type: application/json" \
-  -d '{"unsecured_lines":0.3,"age":35,"past_30_59":0,"past_90":0,"past_60_89":0,"debt_ratio":0.5,"monthly_income":5000,"credit_lines":5,"real_estate":1,"dependents":2}'
+```powershell
+uv run python scripts/bootstrap_data.py
 ```
 
-На Windows PowerShell для запроса можно использовать `Invoke-RestMethod` с тем же JSON. Остановить сервис: `docker compose down`. Для смены локальных учётных данных скопируйте `.env.example` в `.env` и задайте новые значения перед первым запуском базы.
+Откройте **второе окно PowerShell** в папке репозитория и оставьте эту команду работающей:
 
-## Обучение и тесты
+```powershell
+kubectl -n mlops port-forward svc/rustfs 9000:9000
+```
 
-Нужны Python 3.11 и [uv](https://docs.astral.sh/uv/). Артефакт `artifacts/baseline_logreg.joblib` уже включён в репозиторий.
+В первом окне задайте личные настройки DVC (они сохраняются в игнорируемом `.dvc/config.local`) и отправьте данные в бакет. Значения ключей должны совпадать с `S3_KEY` и `S3_SECRET`, которые вы передали в `platform/up.sh`; ниже его учебные значения по умолчанию.
 
-```bash
-uv sync
+```powershell
+uv run dvc remote modify --local laptop endpointurl http://127.0.0.1:9000
+uv run dvc remote modify --local laptop access_key_id dvcadmin
+uv run dvc remote modify --local laptop secret_access_key dvc-secret-123
+uv run dvc push -r laptop
+```
+
+Откройте **третье окно PowerShell** и оставьте вторую пересылку портов работающей:
+
+```powershell
+kubectl -n mlops port-forward svc/mlflow 5000:5000
+```
+
+В первом окне обучите и зарегистрируйте исходный champion:
+
+```powershell
+$env:MLFLOW_TRACKING_URI='http://127.0.0.1:5000'
+uv run python -m credit.data
+uv run python -m credit.train --c 1.0
+```
+
+В конце вывода обучения ожидается JSON с `"promoted": true`. Теперь соберите образ без CSV и разверните API. Секрет должен совпадать с паролем нового Postgres; для первого локального запуска используется `postgres`.
+
+```powershell
+$commitSha = git rev-parse HEAD
+docker build --build-arg BUILD_GIT_SHA=$commitSha -t credit-score:hw4 .
+kind load docker-image credit-score:hw4 --name credit-service
+kubectl create secret generic credit-secrets --from-literal=POSTGRES_PASSWORD=postgres --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f k8s/configmap.yaml -f k8s/postgres.yaml
+kubectl rollout status deployment/postgres
+kubectl set image --local -f k8s/deployment.yaml api=credit-score:hw4 -o yaml | kubectl apply -f -
+kubectl apply -f k8s/service.yaml -f k8s/ingress.yaml -f k8s/hpa.yaml
+kubectl apply -f platform/service-monitor.yaml -f platform/dashboard.yaml
+kubectl rollout status deployment/credit-score
+kubectl -n mlops create configmap airflow-dags --from-file=dags/ --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n mlops exec deploy/airflow -- airflow variables set credit_image credit-score:hw4
+kubectl -n mlops exec deploy/airflow -- airflow variables set credit_c 1.0
+kubectl -n mlops exec deploy/airflow -- airflow variables set credit_class_weight balanced
+kubectl -n mlops exec deploy/airflow -- airflow variables set credit_feature_set quantile
+kubectl -n mlops exec deploy/airflow -- airflow variables set credit_min_gain 0.001
+```
+
+Проверьте ответ через Ingress (PowerShell `curl.exe`, без DNS-запроса к `*.localhost` из Python):
+
+```powershell
+curl.exe -H 'Host: credit.localhost' http://127.0.0.1/health
+curl.exe -H 'Host: credit.localhost' -H 'Content-Type: application/json' -d '{"unsecured_lines":0.3,"age":35,"past_30_59":0,"past_90":0,"past_60_89":0,"debt_ratio":0.5,"monthly_income":5000,"credit_lines":5,"real_estate":1,"dependents":2}' http://127.0.0.1/v1/predict
+curl.exe -H 'Host: credit.localhost' http://127.0.0.1/metrics
+```
+
+Интерфейсы: [MLflow](http://mlflow.localhost), [Airflow](http://airflow.localhost), [Grafana](http://grafana.localhost/d/credit-hw4/credit-score-service), [RustFS](http://s3-console.localhost/rustfs/console/index.html). Grafana: `admin/admin` в учебном кластере. DAG `credit_retrain` выполняет `validate → train → promoted → rollout`. Для ручного запуска нажмите **Trigger** в Airflow; для длительной нагрузки выполните `uv run python scripts/traffic.py --seconds 300`.
+
+Для CI зарегистрируйте self-hosted runner в **GitHub → Settings → Actions → Runners** на том же компьютере, где запущен kind. Выполните показанные GitHub команды регистрации и добавьте labels `self-hosted`, `kind`. Добавьте секрет репозитория `DB_PASSWORD` со значением, использованным для Postgres. После вашего коммита и push ветки `hw4` запустите workflow `ci` кнопкой **Run workflow**; deploy применит DAG и мониторинг, затем проверит ответ, БД и метрику версии модели. На чистом кластере сначала выполните шаги выше, чтобы появился champion.
+
+Если используете уже зарегистрированный контейнер `gh-runner` на этой машине, после перезапуска Docker запустите его слушатель:
+
+```powershell
+docker start gh-runner
+docker exec -d -w /home/runner gh-runner ./run.sh
+docker exec gh-runner pgrep -af Runner.Listener
+```
+
+Runner должен показываться как **Idle** на странице GitHub Runners перед push или ручным запуском workflow. Повторно регистрировать существующий runner не нужно.
+
+## Разработка и восстановление
+
+```powershell
+uv run ruff check .
 uv run pytest
 ```
 
-Чтобы заново получить файлы модели, откройте `baseline.ipynb` и выполните все ячейки по порядку. Последняя часть ноутбука сохраняет `artifacts/baseline_logreg.joblib`, `artifacts/baseline_catboost.cbm` и `artifacts/metadata.json`. Тесты с PostgreSQL запускаются, когда переменные `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD` и `POSTGRES_DB` указывают на работающую базу; без неё они пропускаются. Для локальной базы из Compose используйте `localhost`, `5432`, `postgres`, `postgres`, `credit`.
+В Git лежат код, манифесты и `data/credit_score.csv.dvc`; сам CSV исключён из Git и образа. В `dvc` есть два remote для одного бакета: `laptop` с доступом через локальный port-forward и `cluster` по адресу RustFS внутри kind. Новые версии данных сначала отправляйте `dvc push -r laptop`, затем сохраняйте указатель `data/credit_score.csv.dvc` в Git. Независимую копию CSV и важных MLflow-артефактов держите вне kind: `kind delete cluster` удаляет локальные тома кластера.
 
-## Kubernetes (kind)
-
-После `docker build -t credit-score:1.0 .` и `kind load docker-image credit-score:1.0 --name credit-service` создайте Secret до применения манифестов:
-
-```bash
-kubectl create secret generic credit-secrets --from-literal=POSTGRES_PASSWORD='replace-with-a-local-password'
-kubectl apply -f k8s/
-kubectl rollout status deployment/credit-score
-kubectl port-forward service/credit-score 8000:80
-```
-
-Пароль для базы в Kubernetes хранится только в Secret; значение в команде выше — пример, который нужно заменить. Проверка готовности модели доступна по `http://localhost:8000/ready`, жизни процесса — по `/health`.
-
-## ДЗ 3: MLflow, DVC и постоянный kind
-
-Пошаговая инструкция и порядок проверок находятся в [instructions.md](instructions.md), результаты и ссылки — в разделе H3 [REPORT.md](REPORT.md). Для локального Compose Registry не нужен: если `MODEL_NAME` пуст, сервис берёт включённый в репозиторий `artifacts/baseline_logreg.joblib`. Личный `.env` может переопределить этот режим; перед локальными тестами задайте `MODEL_NAME=''` и `POSTGRES_HOST=''` либо временно уберите `.env`.
-
-В Kubernetes `MODEL_NAME=credit-score-logreg`, `MODEL_ALIAS=champion`; API загружает конкретную Registry version при старте Pod. `/health` сообщает `model_source`, `model_version`, `run_id` и `threshold`. После переноса алиаса выполните `kubectl rollout restart deploy/credit-score`; новая версия появится в `/health` после завершения rollout. Секрет PostgreSQL называется `credit-secrets` и содержит ключ `POSTGRES_PASSWORD`. `k8s/postgres.yaml` использует PVC, поэтому пересоздание Pod сохраняет таблицу.
-
-CSV `data/credit_score.csv` отслеживает DVC, а Git хранит `data/credit_score.csv.dvc`. Указанный в `.dvc/config` remote — локальная папка `C:\dvc-storage`; она не доступна на другой машине через GitHub. Для другого размещения клона настройте remote через `uv run dvc remote modify --local local url <путь>`, затем `uv run dvc pull`. Git SHA определяет версию указателя, DVC восстанавливает CSV, а `data_md5` в MLflow проверяет точный файл. V2 удаляет 270 невалидных строк, сохраняя исходные значения остальных записей. Для возврата V1/V2 восстановите нужный `.dvc` указатель из Git и запустите `uv run dvc checkout`.
-
-Постоянный кластер `credit-service` создан с `platform/kind-config.yaml`: localhost:80 направлен на NodePort 30080 Traefik. MLflow открыт по `http://mlflow.localhost`, API — по `http://credit.localhost`; при системном прокси добавьте `.localhost` в `NO_PROXY`. Порядок первого развёртывания: DVC pull → kind/Traefik/MLflow → обучение и alias `champion` → PostgreSQL/API/HPA → self-hosted runner. Runner подключён к Docker network `kind` с Docker socket и меткой `kind`; GitHub Actions строит образ в облаке, а job `deploy` разворачивает его в существующий кластер и проверяет точный `request_id` в БД. Пока ДЗ проверяется, сохраняйте кластер, MLflow PVC и DVC remote.
+Модель и её версия видны в `/health`, прогнозы сохраняются в PostgreSQL, метрики `/metrics` собирает Prometheus. Локально без кластера можно запустить прежний Compose-режим с моделью из `artifacts/baseline_logreg.joblib`: `docker compose up -d --build`, затем `curl.exe http://localhost:8080/ready`.

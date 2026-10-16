@@ -62,3 +62,13 @@ def test_batch_matches_single_prediction(client, valid_payload):
 def test_batch_size_bounds_are_enforced(client, valid_payload):
     assert client.post("/v1/predict/batch", json={"rows": []}).status_code == 422
     assert client.post("/v1/predict/batch", json={"rows": [valid_payload] * 1001}).status_code == 422
+
+
+def test_metrics_expose_loaded_version_and_predictions(client, valid_payload):
+    prediction = client.post("/v1/predict", json=valid_payload)
+    assert prediction.status_code == 200
+    body = client.get("/metrics").text
+    version = prediction.json()["model_version"]
+    assert f'credit_model_info{{model_version="{version}"}} 1.0' in body
+    assert "credit_prediction_score_count" in body
+    assert "credit_predictions_total" in body

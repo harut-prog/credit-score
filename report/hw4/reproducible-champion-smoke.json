@@ -1,0 +1,27 @@
+{
+  "health": {
+    "state": "ok",
+    "model_source": "registry",
+    "model_name": "credit-score-logreg",
+    "model_alias": "champion",
+    "model_version": "9",
+    "run_id": "14d7c53c5e5b4c5e9df08070312789d7",
+    "threshold": 0.5061002128213644,
+    "log_level": "DEBUG"
+  },
+  "prediction": {
+    "request_id": "04d87a77-4973-4d92-82d7-2da21fed5771",
+    "model_version": "9",
+    "arrear": false,
+    "score": 0.4250882156163192,
+    "latency_ms": 45.51,
+    "status_code": 200
+  },
+  "db_row": {
+    "request_id": "04d87a77-4973-4d92-82d7-2da21fed5771",
+    "score": 0.4250882156163192,
+    "model_version": "9",
+    "status_code": 200,
+    "age": "35"
+  }
+}

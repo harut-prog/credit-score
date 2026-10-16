@@ -11,3 +11,7 @@ wheels/
 .env
 .vscode
 catboost_info/
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+data/*.csv
