@@ -1,4 +1,4 @@
-# H1 — Домашка 1
+# H1 - Домашка 1
 
 ## 3 команды проверки
 
@@ -132,7 +132,7 @@ kubectl port-forward svc/credit-score 8000:80
 
 Логирование (не запись в БД, а в консольке через logger) только в app.py реализовано. Не совсем информативно
 
-# H2 — Домашка 2: CI/CD
+# H2 - Домашка 2: CI/CD
 
 ## Реализация пайплайна
 
@@ -149,7 +149,7 @@ kubectl port-forward svc/credit-score 8000:80
 | Pull request: намеренно сломанный тест, затем исправление | Красная проверка показала `assert 200 == 201`; после исправления тесты прошли. На PR `build` и `deploy` ожидаемо пропущены. | [PR #3](https://github.com/harut-prog/credit-score/pull/3); [красный run #10, 60d2429](https://github.com/harut-prog/credit-score/actions/runs/36037799153); [зелёный run #11, f6d6389](https://github.com/harut-prog/credit-score/actions/runs/36039080294); [красная проверка](docs/img/hw2_broken_test.jpg), [ошибка assertion](docs/img/hw2_assertion_error_test.jpg), [зелёная проверка](docs/img/hw2_ci_all_green.jpg) |
 | ConfigMap: неверный путь к модели | Run #13 упал при запуске API из-за отсутствующего файла; run #14 после исправления успешен. | [Красный run #13](https://github.com/harut-prog/credit-score/actions/runs/36041982811), [FileNotFoundError](docs/img/hw2_fake_joblib.jpg), [зелёный run #14](https://github.com/harut-prog/credit-score/actions/runs/36045651220) |
 | Secret: имя `secretRef` не совпадает с именем созданного секрета | Run #15 упал на rollout; диагностика показала `CreateContainerConfigError`. Run #16 после исправления успешен. | [Красный run #15](https://github.com/harut-prog/credit-score/actions/runs/36110037031); [диагностика](docs/img/hw2_secret_ref_red.jpg), [зелёный run #16](https://github.com/harut-prog/credit-score/actions/runs/36110818433) |
-| Ресурсы: запрос памяти не помещается на узле | В run #19 диагностика показала Pod в `Pending` и `FailedScheduling` из-за `Insufficient memory`; run #20 после возврата обычных значений успешен. | [Красный run #19 — rollout](https://github.com/harut-prog/credit-score/actions/runs/36114563278), [диагностика `Pending` / `Insufficient memory`](docs/img/hw2_failed_scheduling.jpg), [зелёный run #20](https://github.com/harut-prog/credit-score/actions/runs/36115476633) |
+| Ресурсы: запрос памяти не помещается на узле | В run #19 диагностика показала Pod в `Pending` и `FailedScheduling` из-за `Insufficient memory`; run #20 после возврата обычных значений успешен. | [Красный run #19 - rollout](https://github.com/harut-prog/credit-score/actions/runs/36114563278), [диагностика `Pending` / `Insufficient memory`](docs/img/hw2_failed_scheduling.jpg), [зелёный run #20](https://github.com/harut-prog/credit-score/actions/runs/36115476633) |
 | Диагностика при сбое | Шаг `Diagnostics` собирает состояние Pods, события кластера и текущие/предыдущие логи контейнеров. | [Красный run #15](https://github.com/harut-prog/credit-score/actions/runs/36110037031) и [run #19](https://github.com/harut-prog/credit-score/actions/runs/36114563278); команды находятся в `.github/workflows/ci.yml` в шаге `Diagnostics`. |
 
 ## Переделки по фидбэку ДЗ 2
@@ -170,13 +170,13 @@ kubectl port-forward svc/credit-score 8000:80
 
 3. Пароль задаётся в GitHub Secrets как `DB_PASSWORD`, workflow передаёт его в переменную окружения шага, а `kubectl create secret` сохраняет значение в Kubernetes Secret `credit-secrets` под ключом `POSTGRES_PASSWORD`. Deployment через `secretRef` передаёт этот ключ в контейнер как переменную окружения. В ConfigMap пароль хранить нельзя: файл `configmap.yaml` хранится в Git, а содержимое ConfigMap читается открытым текстом через `kubectl get cm -o yaml` пользователями с правом чтения этого ресурса. Secret также требует ограничения доступа; его не следует коммитить в Git.
 
-4. Без `needs: tests` сборка может стартовать параллельно с тестами. Если тесты упадут, build всё равно способен опубликовать образ, а deploy — выкатить его на `master`, поскольку его зависимостью останется build; в результате непроверенная версия попадёт в кластер.
+4. Без `needs: tests` сборка может стартовать параллельно с тестами. Если тесты упадут, build всё равно способен опубликовать образ, а deploy - выкатить его на `master`, поскольку его зависимостью останется build; в результате непроверенная версия попадёт в кластер.
 
 5. На pull request запускается только `tests`, потому что у jobs `build` и `deploy` стоит условие `if: github.ref == 'refs/heads/master'`. Для PR ref имеет вид `refs/pull/.../merge`, поэтому условие ложно. Это не даёт собирать и выкатывать образ из непроверенной ветки PR и не запускает deployment до слияния в `master`.
 
 6. `pg_advisory_xact_lock(12345)` в `db.init()` сериализует инициализацию схемы и автоматически освобождается в конце транзакции. Без блокировки два API-pod могут одновременно начать создавать таблицу в пустой базе; при гонке одна инициализация может завершиться ошибкой, из-за которой соответствующий pod не поднимется. Речь о двух репликах приложения `credit-score`, а не о репликах PostgreSQL.
 
-7. Порядок отказов по этапам запуска: **Pending → CreateContainerConfigError → CrashLoopBackOff**. При нехватке памяти планировщик не нашёл подходящий узел, поэтому Pod остаётся Pending. При неверном имени Secret Pod уже назначен узлу, но kubelet не может собрать окружение контейнера — CreateContainerConfigError. При неверном пути к модели процесс уже запустился, упал при загрузке модели и после повторных рестартов получил CrashLoopBackOff. Это порядок глубины прохождения запуска; в наших экспериментах каждую причину воспроизводили отдельно.
+7. Порядок отказов по этапам запуска: **Pending → CreateContainerConfigError → CrashLoopBackOff**. При нехватке памяти планировщик не нашёл подходящий узел, поэтому Pod остаётся Pending. При неверном имени Secret Pod уже назначен узлу, но kubelet не может собрать окружение контейнера - CreateContainerConfigError. При неверном пути к модели процесс уже запустился, упал при загрузке модели и после повторных рестартов получил CrashLoopBackOff. Это порядок глубины прохождения запуска; в наших экспериментах каждую причину воспроизводили отдельно.
 
 ## Журнал проблем
 
@@ -194,9 +194,9 @@ kubectl port-forward svc/credit-score 8000:80
 
 7. **Неверный Ingress host.** [red 42ec761 / run 37137683401](https://github.com/harut-prog/credit-score/actions/runs/37137683401) → [green 3c78e59 / run 37137910217](https://github.com/harut-prog/credit-score/actions/runs/37137910217). Rollout был успешен, но smoke на `/health` получил `HTTP Error 404: Not Found`, потому что запрос шёл с Host `credit.localhost`, а правило временно слушало `wrong-credit.localhost`. Возврат host `credit.localhost` восстановил полный smoke, включая проверку записи в PostgreSQL.
 
-Для исправленных сценариев я сохранял отдельные коммиты: `f3ecaa2` — модель, `6eea4da` — Secret, `7124af6` — память. Первоначальную ошибочную попытку с request больше limit оставил в истории как диагностический шаг, а в отчёте основным ресурсным сценарием указал повтор run #19.
+Для исправленных сценариев я сохранял отдельные коммиты: `f3ecaa2` - модель, `6eea4da` - Secret, `7124af6` - память. Первоначальную ошибочную попытку с request больше limit оставил в истории как диагностический шаг, а в отчёте основным ресурсным сценарием указал повтор run #19.
 
-# H3 — Домашка 3: MLOps
+# H3 - Домашка 3: MLOps
 
 ## Что запущено и как это проверено
 
@@ -214,21 +214,21 @@ kubectl port-forward svc/credit-score 8000:80
 
 ![История событий HPA](docs/img/hw3/hpa-events.png)
 
-Итог наблюдения за HPA — ниже: во время нагрузки число реплик выросло до 6, после остановки нагрузки вернулось к 2.
+Итог наблюдения за HPA - ниже: во время нагрузки число реплик выросло до 6, после остановки нагрузки вернулось к 2.
 
 ![Повторный прогон HPA](docs/img/hw3/hpa30-rerun.png)
 
-Текстовый журнал находится в `report/hpa/hpa30-cluster.txt`, результаты Locust — в `report/hpa/hpa30_*.csv`.
+Текстовый журнал находится в `report/hpa/hpa30-cluster.txt`, результаты Locust - в `report/hpa/hpa30_*.csv`.
 
 Кластер kind `credit-service` создан с пробросом localhost:80 на NodePort 30080. Traefik направляет `mlflow.localhost` в MLflow, а `credit.localhost` в API. На момент проверки в кластере были готовы MLflow, Traefik, metrics-server, PostgreSQL и две реплики API. HPA установлен с границами 2–6 и порогом 60% CPU. API загружает из Model Registry алиас `champion`, а `/health` сообщает фактическую версию и `run_id`.
 
-Проверка `scripts/smoke_hw3.py` через Ingress вернула `model_source=registry`, `model_version=3`, `score=0.4401357943582565`, `status_code=200`. Запрос с ID `e87965ad-b002-4592-a2b3-26f6225536ec` найден в PostgreSQL с теми же score и версией. Публичная сводка — [report/evidence.md](report/evidence.md).
+Проверка `scripts/smoke_hw3.py` через Ingress вернула `model_source=registry`, `model_version=3`, `score=0.4401357943582565`, `status_code=200`. Запрос с ID `e87965ad-b002-4592-a2b3-26f6225536ec` найден в PostgreSQL с теми же score и версией. Публичная сводка - [report/evidence.md](report/evidence.md).
 
 Локальная проверка кода: `ruff check .` прошла, fallback тесты дали 15 passed и 3 skipped без БД; после запуска Compose PostgreSQL три интеграционных теста `-m integrations` прошли. Они проверяют записи для статусов 200, 422 и 500.
 
 | Требование | Факт и доказательство |
 |---|---|
-| MLflow/Ingress | `mlflow.localhost` открывается в разделе Model training; Registry содержит `credit-score-logreg` версии 1–4. `kubectl get pods,ingress -A` и конфигурация — в `platform/` и `k8s/`. |
+| MLflow/Ingress | `mlflow.localhost` открывается в разделе Model training; Registry содержит `credit-score-logreg` версии 1–4. `kubectl get pods,ingress -A` и конфигурация - в `platform/` и `k8s/`. |
 | Три запуска и гейт | Логи `report/train/train{1,2,3}.txt`; [сводка](report/evidence.md). AP на одном validation split: 0.374676525 → 0.369516914 → 0.376070321. Версия 2 отклонена; `champion=3`. Сохраняются параметры, метрики, PR curve, metadata и `data_md5`. |
 | Registry и API | `/health` показывает `champion=3`; smoke проверил версию, ответ и точную запись в БД. Loader валидирует состав признаков и threshold, ошибка Registry не маскируется fallback файлом. |
 | Git/DVC | V1: `cce525a1d41f234f58d3bb52f3d2516b` (150000 строк); V2: `d7123f735b51ec6675c136a2a944aa25` (149730 строк). [Трансформация](report/data-v2.txt), [DVC push](report/dvc-push-v2.txt), [проверка чистого клона](report/evidence.md), Git V2 `7d56f4e2fe269d88175d7d0e31c4f739edaf6fe4`. `dvc diff 9e2df3a 7d56f4e` показал один изменённый CSV. |
@@ -237,21 +237,21 @@ kubectl port-forward svc/credit-score 8000:80
 
 ## Обучение и выбор champion
 
-Модель — `Pipeline` с `ColumnTransformer`, пропуски `monthly_income` и `dependents` заполняются внутри pipeline. `add_indicator=True` для дохода создаёт индикатор пропуска в обучении и инференсе одинаково. Строки с кодами 96/98 и нулевым возрастом исключены перед разбиением; исходная маска заключена в скобки, удалено 270 строк. Гейт сравнивает Average Precision кандидата и действующего champion на **одном и том же** validation split и требует улучшения хотя бы на `MIN_GAIN=0.001`. Каждая версия получает `challenger`; `champion` меняется только при прохождении гейта. Выход `train.py` сохраняет номера версий и решение.
+Модель - `Pipeline` с `ColumnTransformer`, пропуски `monthly_income` и `dependents` заполняются внутри pipeline. `add_indicator=True` для дохода создаёт индикатор пропуска в обучении и инференсе одинаково. Строки с кодами 96/98 и нулевым возрастом исключены перед разбиением; исходная маска заключена в скобки, удалено 270 строк. Гейт сравнивает Average Precision кандидата и действующего champion на **одном и том же** validation split и требует улучшения хотя бы на `MIN_GAIN=0.001`. Каждая версия получает `challenger`; `champion` меняется только при прохождении гейта. Выход `train.py` сохраняет номера версий и решение.
 
 Запуск на V2 данных создал Registry version 4, `data_md5=d7123f735b51ec6675c136a2a944aa25` и не повысил champion: после удаления уже отфильтрованных при обучении записей validation AP осталась 0.376070321. Это отдельная версия сырого файла; обучающие строки совпали. У MLflow на Windows при перенаправлении вывода в кодировке cp1251 дополнительно возникал `UnicodeEncodeError` при печати emoji в ссылке на run. Регистрация и финальное JSON-решение завершились, но для чистого лога следующего запуска установлена `PYTHONIOENCODING=utf-8`.
 
-Откат проверен через UI Registry: `champion` перенесён с версии 3 на 1, затем выполнен `kubectl rollout restart deploy/credit-score`. Полный rollout шести реплик занял **21,64 с**; `/health` после него показал `model_version=1`, `run_id=17db9ff516254503b7dced238feff4ab`. Образ до и после был тем же `credit-score:hw3`. Затем через UI `champion` возвращён версии 3, Deployment перезапущен; `/health` снова показал `model_version=3`, `run_id=72327f8482c6423d90815ca32aed949b`. Сразу после второго `rollout status` один запрос Ingress кратко вернул 502; повтор через четыре секунды прошёл. Поэтому для оценки доступности одного `rollout status` недостаточно — нужен фактический HTTP smoke после обновления endpoints.
+Откат проверен через UI Registry: `champion` перенесён с версии 3 на 1, затем выполнен `kubectl rollout restart deploy/credit-score`. Полный rollout шести реплик занял **21,64 с**; `/health` после него показал `model_version=1`, `run_id=17db9ff516254503b7dced238feff4ab`. Образ до и после был тем же `credit-score:hw3`. Затем через UI `champion` возвращён версии 3, Deployment перезапущен; `/health` снова показал `model_version=3`, `run_id=72327f8482c6423d90815ca32aed949b`. Сразу после второго `rollout status` один запрос Ingress кратко вернул 502; повтор через четыре секунды прошёл. Поэтому для оценки доступности одного `rollout status` недостаточно - нужен фактический HTTP smoke после обновления endpoints.
 
 ## HPA и три прогона
 
 Первый прогон при 10 пользователях и CPU request 250m: 7108 запросов, ошибок нет, суммарно 29.77 RPS, p95 `/v1/predict` 83 мс. CPU было около 2% от request, HPA держал две реплики. После этого request CPU уменьшен до 50m в `k8s/deployment.yaml`, чтобы на том же учебном узле увидеть реакцию порога 60%; лимит остался 1 CPU на Pod.
 
-При 30 пользователях HPA выдал `SuccessfulRescale` сначала до 4, затем до 6 реплик. Во время прогона `kubectl top pods` показывал 798–989m CPU и 191–196Mi памяти на Pod, HPA — 1745%/60%. Locust выполнил 11812 запросов, из них один POST получил 502 во время масштабирования; p95 POST 790 мс, суммарно 65.86 RPS. Поэтому здесь нельзя утверждать нулевую долю ошибок: она равна 1/11812 ≈ 0.0085%.
+При 30 пользователях HPA выдал `SuccessfulRescale` сначала до 4, затем до 6 реплик. Во время прогона `kubectl top pods` показывал 798–989m CPU и 191–196Mi памяти на Pod, HPA - 1745%/60%. Locust выполнил 11812 запросов, из них один POST получил 502 во время масштабирования; p95 POST 790 мс, суммарно 65.86 RPS. Поэтому здесь нельзя утверждать нулевую долю ошибок: она равна 1/11812 ≈ 0.0085%.
 
-При 60 пользователях HPA оставался на максимуме 6 реплик. CPU был 561–1001m на Pod, память 193–199Mi, HPA — 1349%/60%. Locust выполнил 20120 запросов, из них три POST получили HTTP 502; суммарно 111.92 RPS, p95 POST 1400 мс. Рост RPS по сравнению с 30 пользователями сопровождается ростом задержки и ненулевой долей ошибок 3/20120 ≈ 0.015%. Это предел учебного однопроцессорного кластера/Ingress, а не гарантия отсутствия ошибок при масштабировании.
+При 60 пользователях HPA оставался на максимуме 6 реплик. CPU был 561–1001m на Pod, память 193–199Mi, HPA - 1349%/60%. Locust выполнил 20120 запросов, из них три POST получили HTTP 502; суммарно 111.92 RPS, p95 POST 1400 мс. Рост RPS по сравнению с 30 пользователями сопровождается ростом задержки и ненулевой долей ошибок 3/20120 ≈ 0.015%. Это предел учебного однопроцессорного кластера/Ingress, а не гарантия отсутствия ошибок при масштабировании.
 
-После остановки 60 пользователей в 22:11:29 MSK HPA вернулся к двум репликам в 22:19:50 — через **8 мин 21 с**. Покадровый журнал — `report/hpa/hpa-scale-down.txt`. Внутри этого интервала я дважды перезапускал Deployment для проверки отката модели; HPA сообщил `ScaleDownStabilized` и краткие ошибки получения метрик от ещё не готовых Pod. Поэтому 8 мин 21 с — наблюдаемое время в этой последовательности, а не чистая оценка стандартного окна стабилизации HPA.
+После остановки 60 пользователей в 22:11:29 MSK HPA вернулся к двум репликам в 22:19:50 - через **8 мин 21 с**. Покадровый журнал - `report/hpa/hpa-scale-down.txt`. Внутри этого интервала я дважды перезапускал Deployment для проверки отката модели; HPA сообщил `ScaleDownStabilized` и краткие ошибки получения метрик от ещё не готовых Pod. Поэтому 8 мин 21 с - наблюдаемое время в этой последовательности, а не чистая оценка стандартного окна стабилизации HPA.
 
 | Пользователи | CPU request | Реплики | RPS всего | p95 POST | Ошибки |
 |---:|---:|---:|---:|---:|---:|
@@ -261,13 +261,13 @@ kubectl port-forward svc/credit-score 8000:80
 
 ## Восемь вопросов
 
-1. `tests` и `build` выполняются на GitHub-hosted runner: им нужны исходники, зависимости и право публикации образа, но не локальный Kubernetes. `deploy` выполняется на self-hosted runner в Docker рядом с kind, поскольку кластер за домашним NAT и не имеет публичного API. Альтернативы — VPN/tunnel с контролем доступа или внешний кластер; открывать Kubernetes API в интернет ради домашней работы не нужно.
+1. `tests` и `build` выполняются на GitHub-hosted runner: им нужны исходники, зависимости и право публикации образа, но не локальный Kubernetes. `deploy` выполняется на self-hosted runner в Docker рядом с kind, поскольку кластер за домашним NAT и не имеет публичного API. Альтернативы - VPN/tunnel с контролем доступа или внешний кластер; открывать Kubernetes API в интернет ради домашней работы не нужно.
 
 2. Сеть Docker `kind` даёт runner доступ к адресу control-plane и Ingress из контейнера. Docker socket нужен для `kind export kubeconfig`, `docker pull` и `kind load docker-image`; группа `0` даёт непривилегированному пользователю runner доступ к этому сокету. Такой доступ практически эквивалентен управлению Docker-host, поэтому runner выделен только под доверенный репозиторий, а внешние PR должны требовать одобрения до исполнения на нём.
 
 3. Workflow получает `DB_PASSWORD` из GitHub Secret только в окружение шага. `kubectl create secret --dry-run=client -o yaml | kubectl apply -f -` создаёт или обновляет один Kubernetes Secret повторяемо: dry-run готовит объект, apply отправляет его в кластер. Пароль не записывается в Git и не печатается в логах; Deployment и PostgreSQL получают его через `secretRef`/`secretKeyRef`.
 
-4. `challenger` указывает на последнюю проверяемую версию, `champion` — на прошедшую порог качества. Алиас сохраняет стабильное имя для сервиса, а номер версии даёт точное воспроизведение. Перенос `champion` с версии 3 на 1 и restart Pod откатывает модель без нового образа; `kubectl rollout undo` откатывает Kubernetes Deployment (например, код/образ), но само по себе не меняет Registry alias.
+4. `challenger` указывает на последнюю проверяемую версию, `champion` - на прошедшую порог качества. Алиас сохраняет стабильное имя для сервиса, а номер версии даёт точное воспроизведение. Перенос `champion` с версии 3 на 1 и restart Pod откатывает модель без нового образа; `kubectl rollout undo` откатывает Kubernetes Deployment (например, код/образ), но само по себе не меняет Registry alias.
 
 5. До первого обучения Registry ещё не содержит `champion`. Под с `MODEL_NAME` не может загрузить модель и не должен сообщать Ready; при таком порядке развёртывания CI завершится ошибкой rollout, а в логах будет ошибка поиска alias. Поэтому сначала запуск обучения и проверка champion в MLflow, затем API/runner. Состояние видно через `kubectl get pods` или k9s и шаг Diagnostics в GitHub Actions.
 
@@ -275,7 +275,7 @@ kubectl port-forward svc/credit-score 8000:80
 
 7. HPA считает утилизацию как используемый CPU / `requests.cpu` и приблизительно рекомендует `ceil(текущие реплики × текущая утилизация / 60%)`, с ограничением 2–6. При 250m и малой нагрузке около 2% было недостаточно для роста; при 50m и 30 пользователях наблюдалось 1745%, поэтому целевое число упёрлось в максимум 6. Спад происходит с задержкой стабилизации HPA, а не сразу после остановки Locust; точное время зафиксировано отдельно ниже.
 
-8. Git хранит код и маленький указатель `.dvc`, DVC remote — содержимое большого CSV. Для восстановления данных конкретного run берём `git_sha` и `data_md5` из MLflow, переключаем Git на этот SHA, выполняем `dvc pull` или `dvc checkout` и сравниваем MD5 файла. Версия модели в Registry связана с `run_id`, поэтому путь Registry version → run → Git/DVC однозначен, если remote сохранён.
+8. Git хранит код и маленький указатель `.dvc`, DVC remote - содержимое большого CSV. Для восстановления данных конкретного run берём `git_sha` и `data_md5` из MLflow, переключаем Git на этот SHA, выполняем `dvc pull` или `dvc checkout` и сравниваем MD5 файла. Версия модели в Registry связана с `run_id`, поэтому путь Registry version → run → Git/DVC однозначен, если remote сохранён.
 
 ## Журнал проблем ДЗ 3
 
@@ -283,11 +283,11 @@ kubectl port-forward svc/credit-score 8000:80
 - При 30 пользователях во время роста реплик Ingress один раз вернул 502. Дальше сравниваю с прогоном 60 пользователей и проверяю, повторяется ли отказ.
 - Local DVC remote `C:\dvc-storage` подходит для соседнего клона на этом компьютере, но не переносится на другую машину без копирования storage или смены remote. Это явно указано в README.
 
-# H4 — Итоговый проект (работа в ветке `hw4`)
+# H4 - Итоговый проект (работа в ветке `hw4`)
 
 ## Состояние и границы доказательств
 
-Работа собрана на базе HW3 в ветке `hw4` и вынесена в [черновик PR #11](https://github.com/harut-prog/credit-score/pull/11) в `master`. 14 октября опубликованы [основная реализация `30ffa1b4489f4d79a7568d3a8bed8ff99a8202e2`](https://github.com/harut-prog/credit-score/commit/30ffa1b4489f4d79a7568d3a8bed8ff99a8202e2), [плохая DVC-версия `fbe11c8b27d21e791d79373bbfb6141491696f08`](https://github.com/harut-prog/credit-score/commit/fbe11c8b27d21e791d79373bbfb6141491696f08) и [её отмена `18055945772d546a44cfd619e32c3b65d66c7740`](https://github.com/harut-prog/credit-score/commit/18055945772d546a44cfd619e32c3b65d66c7740). Все три commit URL и соответствие полных SHA проверены по GitHub API. [Run 38558848380](https://github.com/harut-prog/credit-score/actions/runs/38558848380), [run 38560231248](https://github.com/harut-prog/credit-score/actions/runs/38560231248) и [run 38561571900](https://github.com/harut-prog/credit-score/actions/runs/38561571900) завершились `success` во всех трёх jobs; красный исход плохих данных находится в Airflow DAG, а не в CI deploy. [Последний push run 38566192268](https://github.com/harut-prog/credit-score/actions/runs/38566192268) прошёл tests, build и deploy; [run PR 38568265428](https://github.com/harut-prog/credit-score/actions/runs/38568265428) прошёл tests, а build и deploy пропущены по условию workflow. PR, все пять коммитов и результаты проверок сверены на странице GitHub. Старые ссылки на 17 Actions run из разделов HW2/HW3 проверены по GitHub API 13 октября; найдено и исправлено одно неверное слово «green» у `37054829281` — run завершился `failure` на smoke.
+Работа собрана на базе HW3 в ветке `hw4` и вынесена в [черновик PR #11](https://github.com/harut-prog/credit-score/pull/11) в `master`. 14 октября опубликованы [основная реализация `30ffa1b4489f4d79a7568d3a8bed8ff99a8202e2`](https://github.com/harut-prog/credit-score/commit/30ffa1b4489f4d79a7568d3a8bed8ff99a8202e2), [плохая DVC-версия `fbe11c8b27d21e791d79373bbfb6141491696f08`](https://github.com/harut-prog/credit-score/commit/fbe11c8b27d21e791d79373bbfb6141491696f08) и [её отмена `18055945772d546a44cfd619e32c3b65d66c7740`](https://github.com/harut-prog/credit-score/commit/18055945772d546a44cfd619e32c3b65d66c7740). Все три commit URL и соответствие полных SHA проверены по GitHub API. [Run 38558848380](https://github.com/harut-prog/credit-score/actions/runs/38558848380), [run 38560231248](https://github.com/harut-prog/credit-score/actions/runs/38560231248) и [run 38561571900](https://github.com/harut-prog/credit-score/actions/runs/38561571900) завершились `success` во всех трёх jobs; красный исход плохих данных находится в Airflow DAG, а не в CI deploy. [Последний push run 38566192268](https://github.com/harut-prog/credit-score/actions/runs/38566192268) прошёл tests, build и deploy; [run PR 38568265428](https://github.com/harut-prog/credit-score/actions/runs/38568265428) прошёл tests, а build и deploy пропущены по условию workflow. PR, все пять коммитов и результаты проверок сверены на странице GitHub. Старые ссылки на 17 Actions run из разделов HW2/HW3 проверены по GitHub API 13 октября; найдено и исправлено одно неверное слово «green» у `37054829281` - run завершился `failure` на smoke.
 
 ```mermaid
 flowchart LR
@@ -325,13 +325,13 @@ flowchart LR
 | CI/CD | `.github/workflows/ci.yml`: tests → build → deploy; публикация DAG, dashboard и переменных; smoke проверяет Registry, ответ, PostgreSQL и `credit_model_info`; [локальный smoke полного образа](report/hw4/clean-image-smoke.json), [run основного SHA](report/hw4/ci-main-run.json), [run плохих данных](report/hw4/ci-bad-data-run.json), [run после revert](report/hw4/ci-restored-run.json) | [Успешный полный push run](https://github.com/harut-prog/credit-score/actions/runs/38568551114) завершился `success` во всех трёх jobs; deploy выполнил runner `credit-kind`, smoke проверил champion v9, запрос, PostgreSQL и метрику. [Run 38570880222](https://github.com/harut-prog/credit-score/actions/runs/38570880222) после удаления старой инструкции: tests/build зелёные, deploy красный на `Load built image`; локальная проверка затем обнаружила остановившийся runner. [Run 38784496080](https://github.com/harut-prog/credit-score/actions/runs/38784496080) после его запуска: tests/build зелёные, deploy отменён по лимиту 15 минут. [Run 38787281392](https://github.com/harut-prog/credit-score/actions/runs/38787281392) остановился на TLS timeout при логине в GHCR. Лимит увеличен до 30 минут; `BUILD_GIT_SHA` перенесён после тяжёлых слоёв Dockerfile, сетевые шаги получили retry. [Run 38790966397, attempt 2](https://github.com/harut-prog/credit-score/actions/runs/38790966397) завершился `success`: образ загружен в kind, PostgreSQL/API/Airflow развернулись, smoke проверил champion v9, HTTP 200 и строку PostgreSQL. |
 | Quickstart | `README.md`: clone, платформа, восстановление исходного DVC CSV, push, champion, образ, API, Ingress, DAG; [smoke из чистого checkout](report/hw4/fresh-clone-smoke.json) | чистый clone `hw4` на SHA `1805594…`: `uv sync --frozen`, `platform/up.sh`, `dvc pull -r laptop`, сверка MD5 и smoke через Ingress прошли. Использован существующий kind с PVC; полное создание нового кластера не проверялось, чтобы не удалять рабочие данные. |
 
-**Пороговые значения схемы.** После очистки в исходной версии 149730 строк, доля просрочки 6.598%, медиана `monthly_income` 5400. Ограничения `EXPORT` — не меньше 140000 строк, 5–8% просрочки и медиана дохода 4000–7000: допускают умеренное изменение выгрузки и ловят обрезанный или существенно смещённый файл. Возраст 18–120 согласован с Pydantic API; 13 исходных клиентов старше 100 остаются в обучении. `96`/`98` в трёх счётчиках просрочек и возраст 0 удаляются перед проверкой.
+**Пороговые значения схемы.** После очистки в исходной версии 149730 строк, доля просрочки 6.598%, медиана `monthly_income` 5400. Ограничения `EXPORT` - не меньше 140000 строк, 5–8% просрочки и медиана дохода 4000–7000: допускают умеренное изменение выгрузки и ловят обрезанный или существенно смещённый файл. Возраст 18–120 согласован с Pydantic API; 13 исходных клиентов старше 100 остаются в обучении. `96`/`98` в трёх счётчиках просрочек и возраст 0 удаляются перед проверкой.
 
-**Buckets задержки.** В прежнем замере для `/v1/predict` у 10 пользователей медиана была 19 мс, p95 — 49 мс (`report/locust/run10_stats.csv`). Поэтому histogram API чаще разбит около 15–50 мс: 5, 10, 15, 20, 30, 40, 50, 80, 100, 250, 500 и 1000 мс. Уникальные `request_id` и значения признаков в labels отсутствуют.
+**Buckets задержки.** В прежнем замере для `/v1/predict` у 10 пользователей медиана была 19 мс, p95 - 49 мс (`report/locust/run10_stats.csv`). Поэтому histogram API чаще разбит около 15–50 мс: 5, 10, 15, 20, 30, 40, 50, 80, 100, 250, 500 и 1000 мс. Уникальные `request_id` и значения признаков в labels отсутствуют.
 
 ## Сценарии переобучения
 
-`credit_retrain` выполняет `validate → train → promoted → rollout`. Validate и train — разные Kubernetes Pods из образа API; каждый сначала делает `dvc pull -r cluster`. `train` записывает JSON решения гейта в `/airflow/xcom/return.json`; `promoted` проверяет поле `promoted`, а rollout перезапускает `deployment/credit-score` только после истинного решения. Оба образа для локальной проверки собраны поверх заранее закешированного `credit-score:hw4` с актуальными `src` и DVC-указателем; исходный CSV в образ не копировался. У этих проверочных образов нет Git SHA коммита.
+`credit_retrain` выполняет `validate → train → promoted → rollout`. Validate и train - разные Kubernetes Pods из образа API; каждый сначала делает `dvc pull -r cluster`. `train` записывает JSON решения гейта в `/airflow/xcom/return.json`; `promoted` проверяет поле `promoted`, а rollout перезапускает `deployment/credit-score` только после истинного решения. Оба образа для локальной проверки собраны поверх заранее закешированного `credit-score:hw4` с актуальными `src` и DVC-указателем; исходный CSV в образ не копировался. У этих проверочных образов нет Git SHA коммита.
 
 Скриншоты графа Airflow подтверждают три исхода: [отказ гейта](report/hw4/airflow-gate-rejected.png) в `manual__2026-10-16T17:04:24.218691+00:00` (rollout `skipped`), [повышение модели](report/hw4/airflow-promotion.png) в `manual__2026-10-13T17:29:54.948615+00:00` (все задачи `success`) и [отказ на плохих данных](report/hw4/airflow-invalid-data.png) в `manual__2026-10-14T12:06:00.617204+00:00` (`validate=failed`, остальные `upstream_failed`). Идентификаторы запусков видны на самих снимках. После отклонения challenger 16 октября [Registry](report/hw4/mlflow-registry-aliases.png) показывает `challenger` у v10 и неизменный `champion` у v9.
 
@@ -366,10 +366,10 @@ flowchart LR
 
 1. В Model Registry беру version N и её `run_id`, затем у run читаю `git_sha`, `data_md5` и `evaluation_md5` из параметров и `metadata.json`. По `git_sha` восстанавливаю код и `.dvc`-указатель, делаю `dvc pull -r laptop` или `cluster`, сверяю MD5 с `data_md5`; без сохранённого объекта в S3 один указатель недостаточен. Текущий champion v9, [run `14d7c53c5e5b4c5e9df08070312789d7`](http://mlflow.localhost/#/experiments/1/runs/14d7c53c5e5b4c5e9df08070312789d7), содержит `git_sha=08ea3c0811303eb48ec8c7865f3a9958ac700d5e`, `data_md5=d7123f735b51ec6675c136a2a944aa25` и `evaluation_md5=bf753e9d2d1473ab8a76de18b7fa0aec`. Старый v6 имел `git_sha=uncommitted-hw4`; для него такая проверка была неполной.
 2. Образ содержит код и DVC-указатель, чтобы каждый обучающий Pod подтягивал конкретную версию из S3; 7.5 МБ CSV не копируются в каждый образ. Если отправить Git-указатель раньше `dvc push`, новый Pod упадёт на `dvc pull` из-за отсутствующего объекта, это видно в логах задачи Airflow.
-3. Бинарные проверки — типы, возраст, допустимые значения просрочки/таргета, неотрицательность и уникальность ID. Пороговые — минимум 140000 строк, доля класса 5–8%, медиана дохода 4000–7000. Пороги взяты вокруг наблюдаемых 149730, 6.598% и 5400; слишком строгий порог остановит нормальное обновление данных до обучения.
+3. Бинарные проверки - типы, возраст, допустимые значения просрочки/таргета, неотрицательность и уникальность ID. Пороговые - минимум 140000 строк, доля класса 5–8%, медиана дохода 4000–7000. Пороги взяты вокруг наблюдаемых 149730, 6.598% и 5400; слишком строгий порог остановит нормальное обновление данных до обучения.
 4. Pandera проверяет весь обучающий CSV, в том числе ID и статистику выгрузки, до train. Pydantic проверяет один входящий запрос API и не знает ни размера датасета, ни истинного класса. Обе схемы используют один смысловой возраст 18–120 и поля модели, но работают в разных местах.
 5. Airflow планирует и наблюдает задачи, а тяжёлая подготовка данных и sklearn запускаются в отдельных Pods с заданным образом, ресурсами и секретами S3. API уже умеет загрузить `champion` из Registry при старте; после смены alias rollout создаёт Pods с тем же образом и новой версией модели, без пересборки.
-6. Инфраструктурные метрики — `up`, состояние Pods и ресурсы Kubernetes; сервисные — RPS, HTTP-статусы, p50/p95. Модельные — `credit_model_info`, histogram score и доля положительных решений. `request_id` уникален для каждого запроса: label с ним породил бы новую временную серию на каждый запрос и перегрузил Prometheus.
+6. Инфраструктурные метрики - `up`, состояние Pods и ресурсы Kubernetes; сервисные - RPS, HTTP-статусы, p50/p95. Модельные - `credit_model_info`, histogram score и доля положительных решений. `request_id` уникален для каждого запроса: label с ним породил бы новую временную серию на каждый запрос и перегрузил Prometheus.
 7. При rollout Kubernetes запускает новый Pod, дожидается readiness и убирает старый из Service. `preStop` задерживает завершение старого контейнера на 10 секунд, чтобы завершились запросы, которые уже шли через Ingress. В прежнем HW3 под нагрузкой наблюдались единичные 502 во время масштабирования, но их нельзя однозначно приписать отсутствию `preStop`; для HW4 нужен отдельный длительный замер именно при rollout.
 8. Наиболее вероятен отказ доступа к S3: `dvc pull` не найдёт объект или получит 503, поэтому `validate`/`train` красные, а работающий API остаётся на прежнем champion. Это видно в логах Airflow при следующем ручном или ежедневном запуске; первым делом проверю RustFS Pod, бакет, ключи Secret и доступ к endpoint из обучающего Pod, не переключая alias вручную.
 
